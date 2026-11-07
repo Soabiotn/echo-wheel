@@ -13,37 +13,42 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* Layout: one screen, the disc is the whole app; a slim stat strip above, mode switches below. */
+/* Layout: one screen. Player cards on top, the disc in the middle, mode switches below; stats and results slide up as sheets. */
 :root {
   --bg: #e9ebf3;
   --surface: #f7f8fc;
+  --surface-2: #e1e4ef;
   --fg: #1d2033;
   --muted: #5d6280;
   --hub: #1d2033;
   --hub-fg: #f7f8fc;
   --line: #cfd3e3;
+  --scrim: rgba(13, 15, 28, 0.55);
+  --gold: #a87a00;
   --red: #b8323c;    --red-lit: #ff5a66;
   --blue: #2f5fb3;   --blue-lit: #5aa2ff;
   --yellow: #c79a12; --yellow-lit: #ffd84a;
   --green: #2b8a4f;  --green-lit: #4fe08a;
+  --heart: #e0404d;
   --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #151829; --surface: #1e2238; --fg: #eef0fa; --muted: #9aa0c3;
-    --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150;
-    --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c;
+    --bg: #151829; --surface: #1e2238; --surface-2: #272c47; --fg: #eef0fa; --muted: #9aa0c3;
+    --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150; --gold: #ffd84a;
+    --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c; --heart: #ff5a66;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #151829; --surface: #1e2238; --fg: #eef0fa; --muted: #9aa0c3;
-  --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150;
-  --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c;
+  --bg: #151829; --surface: #1e2238; --surface-2: #272c47; --fg: #eef0fa; --muted: #9aa0c3;
+  --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150; --gold: #ffd84a;
+  --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c; --heart: #ff5a66;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -56,45 +61,65 @@ body {
   touch-action: manipulation;
   overflow: hidden;
 }
+input { user-select: text; -webkit-user-select: text; }
+button { font-family: inherit; }
 .app {
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-block: 16px 20px;
+  gap: 10px;
+  padding-block: 14px 18px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-header {
-  width: 100%;
-  max-width: 560px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+header, .board, footer { width: 100%; max-width: 560px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 1.45rem; font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 h1 .dots { display: inline-grid; grid-template-columns: 7px 7px; gap: 2px; }
 h1 .dots i { width: 7px; height: 7px; border-radius: 50%; display: block; }
-.stats { display: flex; gap: 16px; }
-.stat { display: flex; flex-direction: column; align-items: flex-end; }
-.stat .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
-.stat .v { font-family: var(--font-mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-.hearts { letter-spacing: 2px; color: var(--red-lit); }
-.hearts .gone { color: var(--line); }
+.best-btn {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 6px 10px; cursor: pointer; text-align: right; min-width: 0;
+}
+.best-btn:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 2px; }
+.best-btn .lbl { display: flex; flex-direction: column; min-width: 0; }
+.k { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.best-btn .who { font-size: 0.78rem; color: var(--muted); max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.best-btn .num { font-size: 1.4rem; line-height: 1; }
+.trophy { width: 18px; height: 18px; flex: none; color: var(--gold); }
 
+/* Player cards */
+.board { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 8px; }
+.card {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 7px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 8px;
+  align-items: center;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+}
+.card.current { border-color: var(--fg); box-shadow: 0 0 0 1px var(--fg); }
+.card.out { opacity: 0.5; }
+.card .name { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .score { font-family: var(--font-mono); font-size: 1.1rem; text-align: right; font-variant-numeric: tabular-nums; }
+.card .hearts { font-size: 0.95rem; letter-spacing: 1px; color: var(--heart); white-space: nowrap; }
+.card .hearts .gone { color: var(--line); }
+.card .detail { grid-column: 1 / -1; font-size: 0.74rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .scorelbl { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; text-align: right; }
+.board.compact .card { padding: 6px 8px; }
+.board.compact .card .detail { display: none; }
+
+/* Disc */
 .stage { flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; }
-.disc-wrap { width: min(92vw, 100%, 62vh, 520px); aspect-ratio: 1; max-width: 100%; position: relative; }
+.disc-wrap { width: min(92vw, 100%, 56vh, 520px); aspect-ratio: 1; max-width: 100%; position: relative; }
 svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
 .disc.shake { animation: shake 0.42s ease; }
 @keyframes shake {
@@ -103,14 +128,7 @@ svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
   60% { transform: translateX(-6px); } 80% { transform: translateX(4px); }
 }
 .rim { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
-.pad {
-  stroke: var(--bg);
-  stroke-width: 5;
-  stroke-linejoin: round;
-  cursor: pointer;
-  transition: fill 0.12s ease, filter 0.12s ease;
-  outline: none;
-}
+.pad { stroke: var(--bg); stroke-width: 5; stroke-linejoin: round; cursor: pointer; transition: fill 0.12s ease, filter 0.12s ease; outline: none; }
 .pad[data-c="red"]    { fill: var(--red); }
 .pad[data-c="blue"]   { fill: var(--blue); }
 .pad[data-c="yellow"] { fill: var(--yellow); }
@@ -121,72 +139,117 @@ svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
 .pad[data-c="green"].lit  { fill: var(--green-lit);  filter: drop-shadow(0 0 14px var(--green-lit)); }
 .pad:focus-visible { stroke: var(--fg); stroke-width: 3; }
 .locked .pad { cursor: default; }
-
 .hub { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .hub button {
-  pointer-events: auto;
-  width: 36%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 4px solid var(--bg);
-  background: var(--hub);
-  color: var(--hub-fg);
-  font-family: var(--font-display);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 0;
-  box-shadow: inset 0 -6px 0 rgba(0,0,0,0.25);
+  pointer-events: auto; width: 36%; aspect-ratio: 1; border-radius: 50%;
+  border: 4px solid var(--bg); background: var(--hub); color: var(--hub-fg);
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 0 6px; box-shadow: inset 0 -6px 0 rgba(0,0,0,0.25); overflow: hidden;
 }
 .hub button:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 3px; }
-.hub .big { font-family: var(--font-mono); font-size: clamp(1.8rem, 8vmin, 3.2rem); line-height: 1; font-variant-numeric: tabular-nums; }
-.hub .big.word { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.3rem, 5.6vmin, 2.2rem); }
-.hub .small { font-size: clamp(0.62rem, 2.2vmin, 0.85rem); text-transform: uppercase; letter-spacing: 0.14em; opacity: 0.75; font-weight: 600; }
+.hub .big { font-family: var(--font-mono); font-size: clamp(1.8rem, 8vmin, 3.2rem); line-height: 1; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub .big.word { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.1rem, 5vmin, 2rem); }
+.hub .small { font-size: clamp(0.58rem, 2vmin, 0.8rem); text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.75; font-weight: 600; }
 
-.status { min-height: 1.6em; font-size: 1.15rem; font-weight: 600; text-align: center; color: var(--fg); }
+.status { min-height: 2.6em; max-width: 560px; font-size: 1.05rem; font-weight: 600; text-align: center; display: grid; place-items: center; text-wrap: balance; }
+.status.warn { color: var(--heart); }
 .status .hint { color: var(--muted); font-weight: 500; }
 
-footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .chip {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--fg);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 14px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 0.92rem; font-weight: 600; color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .chip:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 2px; }
 .chip:disabled { opacity: 0.45; cursor: not-allowed; }
-.keys { width: 100%; text-align: center; font-size: 0.8rem; color: var(--muted); }
+.chip.danger { color: var(--heart); }
+.keys { width: 100%; text-align: center; font-size: 0.78rem; color: var(--muted); }
 @media (hover: none) { .keys { display: none; } }
-@media (prefers-reduced-motion: reduce) {
-  .disc.shake { animation: none; }
-  .pad { transition: none; }
+
+/* Sheets */
+.sheet { position: fixed; inset: 0; z-index: 20; background: var(--scrim); display: grid; place-items: end center; }
+.panel {
+  width: 100%; max-width: 560px; max-height: 90%; overflow: auto;
+  background: var(--surface); color: var(--fg);
+  border-radius: 20px 20px 0 0;
+  padding-block: 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px;
+  user-select: text; -webkit-user-select: text;
 }
+.panel > * { flex-shrink: 0; }
+@media (min-width: 700px) { .sheet { place-items: center; } .panel { border-radius: 20px; max-height: 86%; } }
+.panel h2 { margin: 0; font-size: 1.45rem; text-wrap: balance; }
+.panel h3 { margin: 0 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.panel .sub { margin: -10px 0 0; color: var(--muted); font-size: 0.95rem; }
+.panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.x { background: none; border: 0; color: var(--muted); font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 8px; }
+.x:focus-visible { outline: 3px solid var(--blue-lit); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font-size: 1rem; font-weight: 600; border-radius: 12px; padding: 11px 18px; cursor: pointer; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 2px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.seg button { padding: 12px 0; font-size: 1.1rem; font-weight: 700; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.note { font-size: 0.85rem; color: var(--muted); margin: 0; }
+
+/* Results */
+.result { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.result.win { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.result .rank { font-family: var(--font-mono); font-size: 1.2rem; color: var(--muted); }
+.result .score { font-family: var(--font-mono); font-size: 1.6rem; text-align: right; }
+.result .who { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.result input {
+  font: inherit; font-weight: 600; font-size: 1rem; width: 100%; min-width: 0;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+.result input:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 1px; }
+.result .meta { font-size: 0.82rem; color: var(--muted); }
+.result ul { grid-column: 1 / -1; margin: 4px 0 0; padding-left: 18px; font-size: 0.85rem; color: var(--muted); display: grid; gap: 2px; }
+.badge { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--gold); color: var(--bg); margin-left: 6px; vertical-align: middle; }
+.swatch { display: inline-block; width: 0.75em; height: 0.75em; border-radius: 50%; vertical-align: -0.05em; margin-right: 3px; }
+
+/* Stats */
+.tabs { display: flex; gap: 6px; }
+.tabs button { flex: 1; padding: 9px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+th.n { text-align: right; }
+tr.top td { font-weight: 700; }
+tr.fresh td { background: var(--surface-2); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.tile { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile .num { font-size: 1.35rem; }
+.tile .k { letter-spacing: 0.08em; }
+.empty { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { .disc.shake { animation: none; } .pad, .card { transition: none; } }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <h1><span class="dots" aria-hidden="true"><i style="background:var(--red-lit)"></i><i style="background:var(--blue-lit)"></i><i style="background:var(--green-lit)"></i><i style="background:var(--yellow-lit)"></i></span>Echo Wheel</h1>
-    <div class="stats">
-      <div class="stat" id="livesStat"><span class="k">Lives</span><span class="v hearts" id="hearts" aria-live="polite"></span></div>
-      <div class="stat"><span class="k">Best</span><span class="v" id="best">0</span></div>
-    </div>
+    <button class="best-btn" id="bestBtn" type="button" aria-label="Open leaderboard and stats">
+      <svg class="trophy" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 3h10v2h3v3a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V18h3v3H8v-3h3v-3.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V5h3V3Zm0 4H6v1a2 2 0 0 0 1 1.7V7Zm10 0v2.7A2 2 0 0 0 18 8V7h-1Z"/></svg>
+      <span class="lbl"><span class="k" id="bestMode">Best</span><span class="who" id="bestWho">No record yet</span></span>
+      <span class="num" id="best">0</span>
+    </button>
   </header>
 
+  <div class="board" id="board" aria-live="polite"></div>
+
   <div class="stage">
-    <div class="disc-wrap" id="discWrap">
+    <div class="disc-wrap">
       <svg class="disc" id="disc" viewBox="-100 -100 200 200" role="group" aria-label="Colour disc">
         <circle class="rim" r="99"></circle>
         <g id="pads"></g>
@@ -198,11 +261,58 @@ footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-
   <div class="status" id="status" aria-live="polite"><span class="hint">Watch the lights, then repeat them.</span></div>
 
   <footer>
+    <button class="chip" id="playersBtn" type="button">1 player</button>
     <button class="chip" id="strictBtn" type="button" aria-pressed="false">Strict mode</button>
-    <button class="chip" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
     <button class="chip" id="speedBtn" type="button">Speed: Normal</button>
-    <div class="keys">Keyboard: arrow keys or 1 to 4 for the colours, Space to start</div>
+    <button class="chip" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    <button class="chip danger" id="endBtn" type="button" hidden>End game</button>
+    <div class="keys">Keyboard: arrow keys or 1 to 4 for the colours, Space to start or take your turn</div>
   </footer>
+</div>
+
+<!-- Players sheet -->
+<div class="sheet" id="playersSheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="playersTitle">
+    <div class="panel-head"><h2 id="playersTitle">How many players?</h2><button class="x" type="button" data-close aria-label="Close">&times;</button></div>
+    <div class="seg" id="countSeg">
+      <button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4">4</button>
+    </div>
+    <p class="note" id="playersNote"></p>
+    <div class="row-actions"><button class="btn primary" id="playersStart" type="button">Start game</button><button class="btn" type="button" data-close>Done</button></div>
+  </div>
+</div>
+
+<!-- Results sheet -->
+<div class="sheet" id="resultSheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+    <div class="panel-head"><h2 id="resultTitle">Game over</h2><button class="x" type="button" data-close aria-label="Close">&times;</button></div>
+    <p class="sub" id="resultSub"></p>
+    <div id="resultList" style="display:grid;gap:10px"></div>
+    <p class="note" id="resultNote">Type your name to save your score to the leaderboard.</p>
+    <div class="row-actions">
+      <button class="btn primary" id="saveBtn" type="button">Save to leaderboard</button>
+      <button class="btn" id="againBtn" type="button">Play again</button>
+      <button class="btn" id="resultStatsBtn" type="button">Leaderboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaderboard & stats sheet -->
+<div class="sheet" id="statsSheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+    <div class="panel-head"><h2 id="statsTitle">Leaderboard</h2><button class="x" type="button" data-close aria-label="Close">&times;</button></div>
+    <div class="tabs" role="tablist" id="boardTabs">
+      <button type="button" role="tab" data-mode="relaxed">Relaxed (3 lives)</button>
+      <button type="button" role="tab" data-mode="strict">Strict (1 life)</button>
+    </div>
+    <div class="table-wrap"><table id="lbTable"></table></div>
+    <section><h3>Best score for each setting</h3><div class="table-wrap"><table id="recTable"></table></div></section>
+    <section><h3>On this device</h3><div class="tiles" id="tiles"></div></section>
+    <section><h3>Players</h3><div class="table-wrap"><table id="playerTable"></table></div></section>
+    <section><h3>Recent games</h3><div class="table-wrap"><table id="recentTable"></table></div></section>
+    <p class="note">Scores are saved on this device only.</p>
+    <div class="row-actions"><button class="btn" id="resetBtn" type="button">Reset leaderboard and stats</button></div>
+  </div>
 </div>
 
 <script>
@@ -214,29 +324,53 @@ footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-
     { c: 'yellow', name: 'Yellow', angle: 90,  freq: 554.37, keys: ['ArrowDown', '3'] },
     { c: 'green',  name: 'Green',  angle: 180, freq: 659.25, keys: ['ArrowLeft', '4'] }
   ];
-  var SPEEDS = [
-    { name: 'Relaxed', mult: 1.35 },
-    { name: 'Normal', mult: 1 },
-    { name: 'Fast', mult: 0.7 }
-  ];
+  var SPEEDS = [{ name: 'Relaxed', mult: 1.35 }, { name: 'Normal', mult: 1 }, { name: 'Fast', mult: 0.7 }];
   var MAX_LIVES = 3;
+  var BOARD_SIZE = 10;
 
   var $ = function (id) { return document.getElementById(id); };
-  var padsG = $('pads'), disc = $('disc'), hub = $('hub'), hubBig = $('hubBig'), hubSmall = $('hubSmall');
-  var statusEl = $('status'), bestEl = $('best'), heartsEl = $('hearts'), livesStat = $('livesStat');
-  var strictBtn = $('strictBtn'), soundBtn = $('soundBtn'), speedBtn = $('speedBtn');
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function swatch(i) { var s = el('span', 'swatch'); s.style.background = 'var(--' + PADS[i].c + '-lit)'; return s; }
 
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem('echowheel.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem('echowheel.' + k, JSON.stringify(v)); } catch (e) {} }
   };
 
-  var settings = { strict: store.get('strict', false), sound: store.get('sound', true), speed: store.get('speed', 1) };
-  var best = store.get('best', { strict: 0, relaxed: 0 });
-  var state = 'idle'; // idle | showing | input | between | over
-  var seq = [], step = 0, lives = MAX_LIVES, token = 0;
+  var settings = {
+    strict: store.get('strict', false),
+    sound: store.get('sound', true),
+    speed: store.get('speed', 1),
+    count: store.get('count', 1),
+    names: store.get('names', [])
+  };
 
-  // ---- Build the disc ----
+  // stats = { games: [...], board: [{name, score, strict, speed, date, players}] }
+  var stats = store.get('stats', null) || { games: [], board: [] };
+  if (!stats.board) stats.board = [];
+  if (!stats.games) stats.games = [];
+  (function migrate() {
+    var old = store.get('best', null);
+    if (old && !store.get('migrated', false)) {
+      if (old.relaxed) stats.board.push({ name: 'Player 1', score: old.relaxed, strict: false, speed: 1, date: null, players: 1 });
+      if (old.strict) stats.board.push({ name: 'Player 1', score: old.strict, strict: true, speed: 1, date: null, players: 1 });
+      store.set('migrated', true); saveStats();
+    }
+  })();
+  function saveStats() {
+    if (stats.games.length > 200) stats.games = stats.games.slice(-200);
+    stats.board.sort(boardOrder);
+    store.set('stats', stats);
+  }
+  function boardOrder(a, b) { return b.score - a.score || (a.date || 0) - (b.date || 0); }
+
+  var els = {
+    pads: $('pads'), disc: $('disc'), hub: $('hub'), hubBig: $('hubBig'), hubSmall: $('hubSmall'),
+    status: $('status'), board: $('board'), best: $('best'), bestWho: $('bestWho'), bestMode: $('bestMode'),
+    playersBtn: $('playersBtn'), strictBtn: $('strictBtn'), soundBtn: $('soundBtn'), speedBtn: $('speedBtn'), endBtn: $('endBtn')
+  };
+
+  // ---- Disc ----
   function polar(r, deg) { var a = deg * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; }
   function wedge(center, R, r) {
     var a0 = center - 45, a1 = center + 45;
@@ -244,17 +378,17 @@ footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-
     return 'M' + p1 + 'A' + R + ' ' + R + ' 0 0 1 ' + p2 + 'L' + p3 + 'A' + r + ' ' + r + ' 0 0 0 ' + p4 + 'Z';
   }
   var padEls = PADS.map(function (p, i) {
-    var el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    el.setAttribute('d', wedge(p.angle, 94, 30));
-    el.setAttribute('class', 'pad');
-    el.setAttribute('data-c', p.c);
-    el.setAttribute('role', 'button');
-    el.setAttribute('tabindex', '0');
-    el.setAttribute('aria-label', p.name);
-    el.addEventListener('pointerdown', function (e) { e.preventDefault(); press(i); });
-    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); press(i); } });
-    padsG.appendChild(el);
-    return el;
+    var e = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    e.setAttribute('d', wedge(p.angle, 94, 30));
+    e.setAttribute('class', 'pad');
+    e.setAttribute('data-c', p.c);
+    e.setAttribute('role', 'button');
+    e.setAttribute('tabindex', '0');
+    e.setAttribute('aria-label', p.name);
+    e.addEventListener('pointerdown', function (ev) { ev.preventDefault(); press(i); });
+    e.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); press(i); } });
+    els.pads.appendChild(e);
+    return e;
   });
 
   // ---- Sound ----
@@ -266,101 +400,119 @@ footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-
   function tone(freq, ms, type, vol) {
     if (!settings.sound || !ctx) return;
     try {
-      var t = ctx.currentTime, d = ms / 1000;
+      var t = ctx.currentTime, d = ms / 1000, v = vol || 0.3;
       var o = ctx.createOscillator(), g = ctx.createGain();
       o.type = type || 'triangle';
       o.frequency.setValueAtTime(freq, t);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol || 0.3, t + 0.012);
-      g.gain.setValueAtTime(vol || 0.3, t + Math.max(0.02, d - 0.06));
+      g.gain.exponentialRampToValueAtTime(v, t + 0.012);
+      g.gain.setValueAtTime(v, t + Math.max(0.02, d - 0.06));
       g.gain.exponentialRampToValueAtTime(0.0001, t + d);
       o.connect(g); g.connect(ctx.destination);
       o.start(t); o.stop(t + d + 0.05);
     } catch (e) {}
   }
   function buzz() {
-    tone(98, 480, 'sawtooth', 0.18);
-    tone(92, 480, 'square', 0.08);
+    tone(98, 480, 'sawtooth', 0.18); tone(92, 480, 'square', 0.08);
     try { if (navigator.vibrate) navigator.vibrate([90, 40, 90]); } catch (e) {}
   }
+  function fanfare() { [0, 1, 2, 3].forEach(function (i) { setTimeout(function () { tone(PADS[i].freq, 160); }, i * 110); }); }
 
   // ---- Helpers ----
   function wait(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
   function flash(i, ms) {
-    var el = padEls[i];
-    el.classList.add('lit');
+    var e = padEls[i];
+    e.classList.add('lit');
     tone(PADS[i].freq, ms);
-    return wait(ms).then(function () { el.classList.remove('lit'); });
+    return wait(ms).then(function () { e.classList.remove('lit'); });
   }
   function timing() {
     var n = seq.length, m = SPEEDS[settings.speed].mult;
     var on = Math.max(160, 470 - n * 16) * m;
     return { on: on, off: Math.max(70, on * 0.42) };
   }
-  function bestKey() { return settings.strict ? 'strict' : 'relaxed'; }
-  function setStatus(text, hint) {
-    statusEl.innerHTML = '';
-    var s = document.createElement('span');
-    if (hint) s.className = 'hint';
-    s.textContent = text;
-    statusEl.appendChild(s);
+  function modeName(strict, speed) { return (strict ? 'Strict' : 'Relaxed') + ', ' + SPEEDS[speed].name.toLowerCase() + ' speed'; }
+  function fmtDate(t) { if (!t) return 'earlier'; try { return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); } catch (e) { return ''; } }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function cleanName(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16); }
+  function defaultName(i) { return 'Player ' + (i + 1); }
+  function setStatus(text, kind) {
+    els.status.textContent = '';
+    var s = el('span', kind === 'hint' ? 'hint' : '', text);
+    els.status.className = 'status' + (kind === 'warn' ? ' warn' : '');
+    els.status.appendChild(s);
   }
   function setHub(big, small, isWord) {
-    hubBig.textContent = big;
-    hubBig.className = 'big' + (isWord ? ' word' : '');
-    hubSmall.textContent = small;
+    els.hubBig.textContent = big;
+    els.hubBig.className = 'big' + (isWord ? ' word' : '');
+    els.hubSmall.textContent = small;
   }
-  function render() {
-    bestEl.textContent = best[bestKey()] || 0;
-    livesStat.hidden = settings.strict;
-    var h = '';
-    for (var i = 0; i < MAX_LIVES; i++) h += i < lives ? '♥' : '<span class="gone">♥</span>';
-    heartsEl.innerHTML = h;
-    heartsEl.setAttribute('aria-label', lives + ' of ' + MAX_LIVES + ' lives');
-    strictBtn.setAttribute('aria-pressed', String(settings.strict));
-    soundBtn.setAttribute('aria-pressed', String(settings.sound));
-    soundBtn.textContent = settings.sound ? 'Sound on' : 'Sound off';
-    speedBtn.textContent = 'Speed: ' + SPEEDS[settings.speed].name;
-    var playing = state !== 'idle' && state !== 'over';
-    strictBtn.disabled = playing;
-    speedBtn.disabled = playing;
-    disc.classList.toggle('locked', state !== 'input');
-    hub.setAttribute('aria-label', playing ? 'Round ' + seq.length : 'Start game');
-  }
+  function multi() { return players.length > 1; }
+  function livesFor() { return settings.strict ? 1 : MAX_LIVES; }
 
-  // ---- Game flow ----
+  // ---- Game state ----
+  var state = 'idle'; // idle | handoff | showing | input | between | over
+  var seq = [], step = 0, token = 0, cur = 0, players = [], lastGame = null;
+
+  function makePlayers() {
+    var list = [];
+    for (var i = 0; i < settings.count; i++) {
+      list.push({ label: cleanName(settings.names[i]) || defaultName(i), lives: livesFor(), maxLives: livesFor(), score: 0, lost: [], alive: true, outRound: null });
+    }
+    return list;
+  }
+  players = makePlayers();
+
   function start() {
     ensureAudio();
     token++;
-    seq = []; step = 0; lives = MAX_LIVES;
-    setStatus('Get ready');
-    nextRound(600);
+    closeSheets();
+    players = makePlayers();
+    seq = [rnd()];
+    cur = 0;
+    lastGame = null;
+    beginTurn(true);
   }
-  function nextRound(delay) {
-    seq.push(Math.floor(Math.random() * 4));
-    state = 'between';
-    setHub(String(seq.length), 'round');
-    render();
-    var my = token;
-    wait(delay).then(function () { if (my === token) playSequence(); });
+  function rnd() { return Math.floor(Math.random() * 4); }
+
+  function beginTurn(first) {
+    var p = players[cur];
+    step = 0;
+    if (multi()) {
+      state = 'handoff';
+      setHub(p.label, 'tap when ready', true);
+      setStatus('Round ' + seq.length + ': pass to ' + p.label + '. Tap the centre when ready.');
+      render();
+    } else {
+      state = 'between';
+      setHub(String(seq.length), 'round');
+      setStatus(first ? 'Get ready' : 'Round ' + seq.length);
+      render();
+      var my = token;
+      wait(first ? 600 : 450).then(function () { if (my === token) playSequence(); });
+    }
   }
+
   function playSequence() {
     var my = ++token;
     state = 'showing';
-    setStatus('Watch');
+    setHub(String(seq.length), multi() ? players[cur].label : 'round');
+    setStatus((multi() ? players[cur].label + ': w' : 'W') + 'atch ' + plural(seq.length, 'colour'));
     render();
     var t = timing(), i = 0;
     (function next() {
       if (my !== token) return;
       if (i >= seq.length) {
         state = 'input'; step = 0;
-        setStatus(settings.strict ? 'Your turn' : 'Your turn (tap the centre to replay)');
+        var who = multi() ? players[cur].label + ', your turn' : 'Your turn';
+        setStatus(settings.strict ? who : who + ' (tap the centre to replay)');
         render();
         return;
       }
       flash(seq[i++], t.on).then(function () { return wait(t.off); }).then(next);
     })();
   }
+
   function press(i) {
     ensureAudio();
     if (state === 'idle' || state === 'over') { flash(i, 180); return; }
@@ -369,59 +521,414 @@ footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-
       flash(i, 200);
       step++;
       if (step === seq.length) {
+        var p = players[cur];
+        p.score = seq.length;
         state = 'between';
-        var k = bestKey();
-        if (seq.length > (best[k] || 0)) { best[k] = seq.length; store.set('best', best); }
-        setStatus(seq.length % 5 === 0 ? seq.length + ' in a row. Keep going!' : 'Correct');
+        setStatus((multi() ? p.label + ': ' : '') + (seq.length % 5 === 0 ? seq.length + ' in a row. Keep going!' : 'Correct, ' + plural(seq.length, 'colour') + '.'));
         render();
         var my = token;
-        wait(500).then(function () { if (my === token) nextRound(450); });
+        wait(600).then(function () { if (my === token) nextPlayer(); });
       }
     } else {
-      mistake();
+      mistake(i);
     }
   }
-  function mistake() {
+
+  function mistake(pressed) {
     token++;
+    var my = token;
     buzz();
-    disc.classList.remove('shake'); void disc.getBoundingClientRect(); disc.classList.add('shake');
-    if (!settings.strict) lives--;
-    if (settings.strict || lives <= 0) { gameOver(); return; }
+    els.disc.classList.remove('shake'); void els.disc.getBoundingClientRect(); els.disc.classList.add('shake');
+    var p = players[cur];
+    var needed = seq[step];
+    p.lives--;
+    p.lost.push({ round: seq.length, at: step + 1, pressed: pressed, needed: needed });
+    var who = multi() ? p.label + ': ' : '';
+    var what = 'pressed ' + PADS[pressed].name + ', needed ' + PADS[needed].name + ' (colour ' + (step + 1) + ' of ' + seq.length + ').';
     state = 'between';
-    setStatus('Wrong colour. Watch again.');
-    render();
-    var my = token;
-    wait(1100).then(function () { if (my === token) playSequence(); });
+    if (p.lives <= 0) {
+      p.alive = false;
+      p.outRound = seq.length;
+      setStatus(who + capital(what) + (multi() ? ' Out with a score of ' + p.score + '.' : ''), 'warn');
+      render();
+      wait(multi() ? 1800 : 1200).then(function () { if (my === token) nextPlayer(); });
+    } else {
+      setStatus(who + capital(what) + ' Life lost, ' + plural(p.lives, 'life').replace('lifes', 'lives') + ' left.', 'warn');
+      render();
+      wait(1900).then(function () { if (my === token) playSequence(); });
+    }
   }
+  function capital(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function nextPlayer() {
+    for (var j = cur + 1; j < players.length; j++) { if (players[j].alive) { cur = j; beginTurn(false); return; } }
+    var firstAlive = -1;
+    for (var k = 0; k < players.length; k++) { if (players[k].alive) { firstAlive = k; break; } }
+    if (firstAlive === -1) { gameOver(); return; }
+    seq.push(rnd());
+    cur = firstAlive;
+    beginTurn(false);
+  }
+
+  function ranked(list) {
+    return list.slice().sort(function (a, b) { return b.score - a.score || a.lost.length - b.lost.length; });
+  }
+
   function gameOver() {
+    token++;
     state = 'over';
-    var score = seq.length - 1;
-    var isBest = score > 0 && score >= (best[bestKey()] || 0);
-    setHub(String(score), 'tap to retry');
-    setStatus(isBest ? 'Game over. New best: ' + score + '!' : 'Game over. You repeated ' + score + (score === 1 ? ' colour.' : ' colours.'));
+    var order = ranked(players);
+    var top = order[0];
+    var tie = order.length > 1 && order[1].score === top.score && order[1].lost.length === top.lost.length;
+    var winner = multi() && top.score > 0 && !tie ? top : null;
+    var recordBefore = bestFor(settings.strict, settings.speed);
+    var isRecord = top.score > 0 && (!recordBefore || top.score > recordBefore.score);
+    lastGame = {
+      date: Date.now(), strict: settings.strict, speed: settings.speed, rounds: seq.length,
+      players: players.map(function (p) { return { label: p.label, name: null, score: p.score, lost: p.lost.slice(), maxLives: p.maxLives }; }),
+      winner: winner ? players.indexOf(winner) : null, saved: false, tie: tie && multi()
+    };
+    stats.games.push(lastGame);
+    saveStats();
+    if (multi()) setHub(winner ? winner.label : 'Draw', winner ? 'wins' : 'tap to retry', true);
+    else setHub(String(top.score), 'tap to retry');
+    setStatus(multi() ? (winner ? winner.label + ' wins with ' + plural(winner.score, 'colour') + '.' : 'It’s a draw.') :
+      (isRecord ? 'New best score: ' + top.score + '!' : 'Game over. You repeated ' + plural(top.score, 'colour') + '.'));
+    if (isRecord || winner) fanfare();
     render();
     var my = token;
-    wait(650).then(function () {
+    wait(260).then(function () {
       if (my !== token) return;
-      padEls.forEach(function (el) { el.classList.add('lit'); });
-      return wait(260).then(function () { padEls.forEach(function (el) { el.classList.remove('lit'); }); });
+      padEls.forEach(function (e) { e.classList.add('lit'); });
+      return wait(260).then(function () { padEls.forEach(function (e) { e.classList.remove('lit'); }); });
+    });
+    wait(1100).then(function () { if (my === token) openResults(); });
+  }
+
+  function endGameEarly() {
+    if (state === 'idle' || state === 'over') return;
+    players.forEach(function (p) { if (p.alive) { p.alive = false; p.outRound = seq.length; } });
+    gameOver();
+  }
+
+  // ---- Records ----
+  function boardFor(strict) { return stats.board.filter(function (e) { return !!e.strict === !!strict; }).sort(boardOrder); }
+  function bestFor(strict, speed) {
+    var b = stats.board.filter(function (e) { return !!e.strict === !!strict && e.speed === speed; }).sort(boardOrder)[0] || null;
+    var g = null;
+    stats.games.forEach(function (game) {
+      if (!!game.strict !== !!strict || game.speed !== speed) return;
+      game.players.forEach(function (p) { if (p.score > 0 && (!g || p.score > g.score)) g = { score: p.score, name: p.name || p.label, date: game.date }; });
+    });
+    if (b && (!g || b.score >= g.score)) return b;
+    return g;
+  }
+
+  // ---- Render ----
+  function render() {
+    var n = players.length;
+    els.board.style.setProperty('--n', n);
+    els.board.classList.toggle('compact', n >= 3);
+    els.board.textContent = '';
+    var playing = state !== 'idle' && state !== 'over';
+    players.forEach(function (p, i) {
+      var c = el('div', 'card');
+      if (playing && i === cur && p.alive) c.classList.add('current');
+      if (!p.alive) c.classList.add('out');
+      c.appendChild(el('div', 'name', p.label + (p.alive ? '' : ' (out)')));
+      var sc = el('div', 'score', String(p.score));
+      sc.title = 'Score: longest pattern repeated';
+      c.appendChild(sc);
+      var h = el('div', 'hearts');
+      for (var k = 0; k < p.maxLives; k++) {
+        var s = el('span', k < p.lives ? '' : 'gone', '♥');
+        h.appendChild(s);
+      }
+      h.setAttribute('aria-label', p.lives + ' of ' + p.maxLives + ' lives left');
+      c.appendChild(h);
+      c.appendChild(el('div', 'scorelbl', 'score'));
+      var d;
+      if (p.lost.length) {
+        var last = p.lost[p.lost.length - 1];
+        d = (p.alive ? plural(p.lives, 'life').replace('lifes', 'lives') + ' left. ' : '') + 'Last miss: round ' + last.round + ', ' + PADS[last.pressed].name + ' for ' + PADS[last.needed].name;
+      } else {
+        d = p.maxLives === 1 ? 'Strict: one mistake ends the game' : p.lives + ' of ' + p.maxLives + ' lives, no misses yet';
+      }
+      c.appendChild(el('div', 'detail', d));
+      els.board.appendChild(c);
+    });
+
+    var best = bestFor(settings.strict, settings.speed);
+    els.best.textContent = best ? best.score : 0;
+    els.bestWho.textContent = best ? best.name : 'No record yet';
+    els.bestMode.textContent = 'Best';
+    $('bestBtn').title = 'Best score for ' + modeName(settings.strict, settings.speed) + '. Tap for the leaderboard.';
+
+    els.playersBtn.textContent = plural(settings.count, 'player');
+    els.strictBtn.setAttribute('aria-pressed', String(settings.strict));
+    els.soundBtn.setAttribute('aria-pressed', String(settings.sound));
+    els.soundBtn.textContent = settings.sound ? 'Sound on' : 'Sound off';
+    els.speedBtn.textContent = 'Speed: ' + SPEEDS[settings.speed].name;
+    els.playersBtn.disabled = playing;
+    els.strictBtn.disabled = playing;
+    els.speedBtn.disabled = playing;
+    els.endBtn.hidden = !playing;
+    els.disc.classList.toggle('locked', state !== 'input');
+    els.hub.setAttribute('aria-label', state === 'handoff' ? players[cur].label + ': start your turn' : playing ? 'Round ' + seq.length : 'Start game');
+  }
+
+  // ---- Sheets ----
+  var openSheet = null;
+  function showSheet(id) {
+    closeSheets();
+    openSheet = $(id);
+    openSheet.hidden = false;
+    var f = openSheet.querySelector('input, .btn.primary, button');
+    if (f) setTimeout(function () { try { f.focus(); } catch (e) {} }, 30);
+  }
+  function closeSheets() {
+    ['playersSheet', 'resultSheet', 'statsSheet'].forEach(function (id) { $(id).hidden = true; });
+    openSheet = null;
+  }
+  document.querySelectorAll('.sheet').forEach(function (s) {
+    s.addEventListener('click', function (e) { if (e.target === s || e.target.hasAttribute('data-close')) closeSheets(); });
+  });
+
+  // Players sheet
+  function renderPlayersSheet() {
+    document.querySelectorAll('#countSeg button').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.n === settings.count)); });
+    $('playersNote').textContent = settings.count === 1
+      ? 'Solo game. Your score goes on the leaderboard at the end.'
+      : settings.count + ' players take turns on this device. Everyone repeats the same pattern each round. When you run out of lives you are out; the longest pattern wins. You enter your names at the end.';
+  }
+  document.querySelectorAll('#countSeg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      settings.count = +b.dataset.n; store.set('count', settings.count);
+      players = makePlayers(); state = 'idle'; setHub('Start', 'tap to play', true);
+      renderPlayersSheet(); render();
+    });
+  });
+  $('playersStart').addEventListener('click', start);
+
+  // Results sheet
+  function openResults() {
+    var g = lastGame;
+    if (!g) return;
+    var list = $('resultList');
+    list.textContent = '';
+    var order = g.players.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) { return b.p.score - a.p.score || a.p.lost.length - b.p.lost.length; });
+    var m = g.players.length > 1;
+    $('resultTitle').textContent = m ? (g.winner != null ? g.players[g.winner].label + ' wins!' : 'It’s a draw') : 'Game over';
+    $('resultSub').textContent = modeName(g.strict, g.speed) + ' · reached round ' + g.rounds;
+    var names = settings.names;
+    order.forEach(function (o, r) {
+      var p = o.p, i = o.i;
+      var box = el('div', 'result' + (g.winner === i ? ' win' : ''));
+      box.appendChild(el('div', 'rank', m ? '#' + (r + 1) : ''));
+      var who = el('div', 'who');
+      var inp = el('input');
+      inp.type = 'text'; inp.id = 'name' + i; inp.maxLength = 16; inp.autocomplete = 'off';
+      inp.placeholder = 'Name for ' + defaultName(i);
+      inp.value = names[i] || '';
+      inp.setAttribute('aria-label', 'Name for ' + p.label);
+      inp.disabled = g.saved || p.score === 0;
+      who.appendChild(inp);
+      var rec = bestFor(g.strict, g.speed);
+      var place = placeOnBoard(g.strict, p.score) + r; // players ranked above in this game also go on the board
+      var metaText = p.score === 0 ? 'No score to save' : (place <= BOARD_SIZE ? 'Would place #' + place + ' on the ' + (g.strict ? 'Strict' : 'Relaxed') + ' leaderboard' : 'Outside the top ' + BOARD_SIZE);
+      var meta = el('div', 'meta', metaText);
+      if (rec && p.score >= rec.score && p.score > 0 && (rec.date === g.date || rec.score === p.score)) {
+        var bd = el('span', 'badge', 'Best'); meta.appendChild(bd);
+      }
+      who.appendChild(meta);
+      box.appendChild(who);
+      box.appendChild(el('div', 'score', String(p.score)));
+      var ul = el('ul');
+      var used = p.lost.length;
+      ul.appendChild(el('li', null, p.maxLives === 1 ? 'Strict mode: 1 life' : 'Lives used: ' + used + ' of ' + p.maxLives + (used < p.maxLives ? ' (game ended early)' : '')));
+      p.lost.forEach(function (l, n) {
+        var li = el('li');
+        li.appendChild(document.createTextNode('Life ' + (n + 1) + ': round ' + l.round + ', colour ' + l.at + ' of ' + l.round + '. Pressed '));
+        li.appendChild(swatch(l.pressed)); li.appendChild(document.createTextNode(PADS[l.pressed].name + ', needed '));
+        li.appendChild(swatch(l.needed)); li.appendChild(document.createTextNode(PADS[l.needed].name));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+      list.appendChild(box);
+    });
+    var any = g.players.some(function (p) { return p.score > 0; });
+    $('saveBtn').disabled = g.saved || !any;
+    $('saveBtn').textContent = g.saved ? 'Saved' : 'Save to leaderboard';
+    $('resultNote').textContent = g.saved ? 'Saved. Open the leaderboard to see where you placed.' : any ? (m ? 'Each player types a name to save their score.' : 'Type your name to save your score.') : 'Repeat at least one colour to get on the leaderboard.';
+    showSheet('resultSheet');
+  }
+  function placeOnBoard(strict, score) {
+    var b = boardFor(strict), n = 1;
+    b.forEach(function (e) { if (e.score >= score) n++; });
+    return n;
+  }
+  var freshEntries = [];
+  $('saveBtn').addEventListener('click', function () {
+    var g = lastGame;
+    if (!g || g.saved) return;
+    freshEntries = [];
+    g.players.forEach(function (p, i) {
+      var inp = $('name' + i);
+      var name = cleanName(inp && inp.value) || defaultName(i);
+      p.name = name;
+      settings.names[i] = name;
+      if (p.score > 0) {
+        var entry = { name: name, score: p.score, strict: g.strict, speed: g.speed, date: g.date, players: g.players.length };
+        stats.board.push(entry);
+        freshEntries.push(entry);
+      }
+    });
+    store.set('names', settings.names);
+    g.saved = true;
+    saveStats();
+    players.forEach(function (p, i) { if (g.players[i].name) p.label = g.players[i].name; });
+    render();
+    openStats(g.strict);
+  });
+  $('againBtn').addEventListener('click', start);
+  $('resultStatsBtn').addEventListener('click', function () { openStats(lastGame ? lastGame.strict : settings.strict); });
+  $('resultSheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('saveBtn').click(); } });
+
+  // Leaderboard & stats sheet
+  var statsTab = false;
+  function openStats(strict) { statsTab = !!strict; renderStats(); showSheet('statsSheet'); }
+  document.querySelectorAll('#boardTabs button').forEach(function (b) {
+    b.addEventListener('click', function () { statsTab = b.dataset.mode === 'strict'; renderStats(); });
+  });
+  function headRow(t, cols) {
+    var tr = el('tr');
+    cols.forEach(function (c) { var th = el('th', c.n ? 'n' : '', c.t); tr.appendChild(th); });
+    var thead = el('thead'); thead.appendChild(tr); t.appendChild(thead);
+    var tb = el('tbody'); t.appendChild(tb); return tb;
+  }
+  function cell(tr, text, num) { tr.appendChild(el('td', num ? 'n' : '', text)); }
+  function emptyRow(tb, cols, text) { var tr = el('tr'); var td = el('td', 'empty', text); td.colSpan = cols; tr.appendChild(td); tb.appendChild(tr); }
+
+  function renderStats() {
+    document.querySelectorAll('#boardTabs button').forEach(function (b) { b.setAttribute('aria-selected', String((b.dataset.mode === 'strict') === statsTab)); });
+
+    // Leaderboard
+    var t = $('lbTable'); t.textContent = '';
+    var tb = headRow(t, [{ t: '#' }, { t: 'Name' }, { t: 'Score', n: 1 }, { t: 'Speed' }, { t: 'Game' }, { t: 'Date' }]);
+    var rows = boardFor(statsTab).slice(0, BOARD_SIZE);
+    if (!rows.length) emptyRow(tb, 6, 'No scores yet. Finish a game and save your name to get on the board.');
+    rows.forEach(function (e, i) {
+      var tr = el('tr', (i === 0 ? 'top ' : '') + (freshEntries.indexOf(e) !== -1 ? 'fresh' : ''));
+      cell(tr, String(i + 1), true); cell(tr, e.name); cell(tr, String(e.score), true);
+      cell(tr, SPEEDS[e.speed] ? SPEEDS[e.speed].name : ''); cell(tr, e.players > 1 ? e.players + ' players' : 'Solo'); cell(tr, fmtDate(e.date));
+      tb.appendChild(tr);
+    });
+
+    // Records per setting
+    var rt = $('recTable'); rt.textContent = '';
+    var rtb = headRow(rt, [{ t: 'Mode' }, { t: 'Speed' }, { t: 'Best', n: 1 }, { t: 'Held by' }, { t: 'Date' }]);
+    [false, true].forEach(function (s) {
+      SPEEDS.forEach(function (sp, si) {
+        var r = bestFor(s, si);
+        var tr = el('tr');
+        cell(tr, s ? 'Strict' : 'Relaxed'); cell(tr, sp.name); cell(tr, r ? String(r.score) : '–', true);
+        cell(tr, r ? r.name : '–'); cell(tr, r ? fmtDate(r.date) : '');
+        rtb.appendChild(tr);
+      });
+    });
+
+    // Tiles
+    var all = [];
+    stats.games.forEach(function (g) { g.players.forEach(function (p) { all.push({ p: p, g: g }); }); });
+    var games = stats.games.length;
+    var totalColours = all.reduce(function (a, x) { return a + x.p.score; }, 0);
+    var avg = all.length ? (totalColours / all.length) : 0;
+    var lives = all.reduce(function (a, x) { return a + x.p.lost.length; }, 0);
+    var missCount = [0, 0, 0, 0];
+    all.forEach(function (x) { x.p.lost.forEach(function (l) { missCount[l.needed]++; }); });
+    var worst = -1; missCount.forEach(function (c, i) { if (c > 0 && (worst === -1 || c > missCount[worst])) worst = i; });
+    var deepest = 0; stats.games.forEach(function (g) { deepest = Math.max(deepest, g.rounds || 0); });
+    var tiles = $('tiles'); tiles.textContent = '';
+    function tile(k, v, extra) { var d = el('div', 'tile'); d.appendChild(el('span', 'k', k)); var nv = el('span', 'num', v); d.appendChild(nv); if (extra) d.appendChild(el('span', 'k', extra)); tiles.appendChild(d); }
+    tile('Games played', String(games));
+    tile('Average score', avg.toFixed(1));
+    tile('Colours repeated', String(totalColours));
+    tile('Lives lost', String(lives));
+    tile('Furthest round', String(deepest));
+    tile('Most missed', worst === -1 ? '–' : PADS[worst].name, worst === -1 ? '' : plural(missCount[worst], 'time'));
+
+    // Players
+    var byName = {};
+    stats.games.forEach(function (g) {
+      g.players.forEach(function (p, i) {
+        if (!p.name) return;
+        var k = p.name.toLowerCase();
+        var r = byName[k] || (byName[k] = { name: p.name, games: 0, wins: 0, best: 0, total: 0, lives: 0 });
+        r.games++; r.total += p.score; r.best = Math.max(r.best, p.score); r.lives += p.lost.length;
+        if (g.winner === i) r.wins++;
+      });
+    });
+    var pt = $('playerTable'); pt.textContent = '';
+    var ptb = headRow(pt, [{ t: 'Name' }, { t: 'Games', n: 1 }, { t: 'Wins', n: 1 }, { t: 'Best', n: 1 }, { t: 'Average', n: 1 }, { t: 'Lives lost', n: 1 }]);
+    var plist = Object.keys(byName).map(function (k) { return byName[k]; }).sort(function (a, b) { return b.best - a.best || b.wins - a.wins; });
+    if (!plist.length) emptyRow(ptb, 6, 'Players appear here once they save a score with their name.');
+    plist.forEach(function (r) {
+      var tr = el('tr');
+      cell(tr, r.name); cell(tr, String(r.games), true); cell(tr, String(r.wins), true); cell(tr, String(r.best), true);
+      cell(tr, (r.total / r.games).toFixed(1), true); cell(tr, String(r.lives), true);
+      ptb.appendChild(tr);
+    });
+
+    // Recent
+    var ct = $('recentTable'); ct.textContent = '';
+    var ctb = headRow(ct, [{ t: 'Date' }, { t: 'Mode' }, { t: 'Scores' }, { t: 'Result' }]);
+    var recent = stats.games.slice(-8).reverse();
+    if (!recent.length) emptyRow(ctb, 4, 'No games yet.');
+    recent.forEach(function (g) {
+      var tr = el('tr');
+      cell(tr, fmtDate(g.date));
+      cell(tr, (g.strict ? 'Strict' : 'Relaxed') + ', ' + (SPEEDS[g.speed] ? SPEEDS[g.speed].name.toLowerCase() : ''));
+      cell(tr, g.players.map(function (p) { return (p.name || p.label) + ' ' + p.score; }).join(' · '));
+      cell(tr, g.players.length === 1 ? 'Solo' : g.winner != null ? (g.players[g.winner].name || g.players[g.winner].label) + ' won' : 'Draw');
+      ctb.appendChild(tr);
     });
   }
 
-  // ---- Controls ----
-  hub.addEventListener('click', function () {
-    if (state === 'idle' || state === 'over') start();
-    else if (state === 'input' && !settings.strict) playSequence(); // relaxed mode: tap the hub to see the pattern again
+  var resetArmed = false;
+  $('resetBtn').addEventListener('click', function () {
+    var b = $('resetBtn');
+    if (!resetArmed) {
+      resetArmed = true; b.textContent = 'Tap again to erase all scores'; b.classList.add('primary');
+      setTimeout(function () { resetArmed = false; b.textContent = 'Reset leaderboard and stats'; b.classList.remove('primary'); }, 4000);
+      return;
+    }
+    resetArmed = false;
+    stats = { games: [], board: [] }; freshEntries = []; lastGame = null;
+    saveStats(); b.textContent = 'Reset leaderboard and stats'; b.classList.remove('primary');
+    renderStats(); render();
   });
-  strictBtn.addEventListener('click', function () { settings.strict = !settings.strict; store.set('strict', settings.strict); render(); });
-  soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
-  speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
+
+  // ---- Controls ----
+  els.hub.addEventListener('click', function () {
+    if (state === 'idle' || state === 'over') start();
+    else if (state === 'handoff') { ensureAudio(); playSequence(); }
+    else if (state === 'input' && !settings.strict) playSequence();
+  });
+  els.playersBtn.addEventListener('click', function () { renderPlayersSheet(); showSheet('playersSheet'); });
+  els.strictBtn.addEventListener('click', function () { settings.strict = !settings.strict; store.set('strict', settings.strict); players = makePlayers(); render(); });
+  els.soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
+  els.speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
+  els.endBtn.addEventListener('click', endGameEarly);
+  $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict); });
 
   document.addEventListener('keydown', function (e) {
-    if (e.repeat) return;
+    if (e.key === 'Escape' && openSheet) { closeSheets(); return; }
+    if (openSheet || e.repeat) return;
+    if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === ' ' || e.key === 'Enter') {
       if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
       if (state === 'idle' || state === 'over') { e.preventDefault(); start(); }
+      else if (state === 'handoff') { e.preventDefault(); ensureAudio(); playSequence(); }
       return;
     }
     for (var i = 0; i < PADS.length; i++) {

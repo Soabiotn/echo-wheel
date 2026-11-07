@@ -1,5 +1,5 @@
 // Offline cache for Echo Wheel. Bump VERSION when you change any file.
-const VERSION = 'echo-wheel-v1';
+const VERSION = 'echo-wheel-v2';
 const CORE = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -14,14 +14,16 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Cache first, then network; fonts get cached on first load so the game works offline.
+// Network first so updates show up straight away; fall back to the cache when offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+    fetch(e.request).then((res) => {
+      if (res && (res.ok || res.type === 'opaque')) {
+        const copy = res.clone();
+        caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+      }
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(e.request).then((hit) => hit || caches.match('./index.html')))
   );
 });
