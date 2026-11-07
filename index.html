@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#151829">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Echo Wheel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one screen, the disc is the whole app; a slim stat strip above, mode switches below. */
+:root {
+  --bg: #e9ebf3;
+  --surface: #f7f8fc;
+  --fg: #1d2033;
+  --muted: #5d6280;
+  --hub: #1d2033;
+  --hub-fg: #f7f8fc;
+  --line: #cfd3e3;
+  --red: #b8323c;    --red-lit: #ff5a66;
+  --blue: #2f5fb3;   --blue-lit: #5aa2ff;
+  --yellow: #c79a12; --yellow-lit: #ffd84a;
+  --green: #2b8a4f;  --green-lit: #4fe08a;
+  --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151829; --surface: #1e2238; --fg: #eef0fa; --muted: #9aa0c3;
+    --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150;
+    --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151829; --surface: #1e2238; --fg: #eef0fa; --muted: #9aa0c3;
+  --hub: #0d0f1c; --hub-fg: #eef0fa; --line: #2c3150;
+  --red: #8e2730; --blue: #234a8c; --yellow: #9a7610; --green: #1f6a3c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-display);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  overflow: hidden;
+}
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 16px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+h1 .dots { display: inline-grid; grid-template-columns: 7px 7px; gap: 2px; }
+h1 .dots i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+.stats { display: flex; gap: 16px; }
+.stat { display: flex; flex-direction: column; align-items: flex-end; }
+.stat .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.stat .v { font-family: var(--font-mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.hearts { letter-spacing: 2px; color: var(--red-lit); }
+.hearts .gone { color: var(--line); }
+
+.stage { flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; }
+.disc-wrap { width: min(92vw, 100%, 62vh, 520px); aspect-ratio: 1; max-width: 100%; position: relative; }
+svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
+.disc.shake { animation: shake 0.42s ease; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-10px); } 40% { transform: translateX(9px); }
+  60% { transform: translateX(-6px); } 80% { transform: translateX(4px); }
+}
+.rim { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+.pad {
+  stroke: var(--bg);
+  stroke-width: 5;
+  stroke-linejoin: round;
+  cursor: pointer;
+  transition: fill 0.12s ease, filter 0.12s ease;
+  outline: none;
+}
+.pad[data-c="red"]    { fill: var(--red); }
+.pad[data-c="blue"]   { fill: var(--blue); }
+.pad[data-c="yellow"] { fill: var(--yellow); }
+.pad[data-c="green"]  { fill: var(--green); }
+.pad[data-c="red"].lit    { fill: var(--red-lit);    filter: drop-shadow(0 0 14px var(--red-lit)); }
+.pad[data-c="blue"].lit   { fill: var(--blue-lit);   filter: drop-shadow(0 0 14px var(--blue-lit)); }
+.pad[data-c="yellow"].lit { fill: var(--yellow-lit); filter: drop-shadow(0 0 14px var(--yellow-lit)); }
+.pad[data-c="green"].lit  { fill: var(--green-lit);  filter: drop-shadow(0 0 14px var(--green-lit)); }
+.pad:focus-visible { stroke: var(--fg); stroke-width: 3; }
+.locked .pad { cursor: default; }
+
+.hub { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.hub button {
+  pointer-events: auto;
+  width: 36%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 4px solid var(--bg);
+  background: var(--hub);
+  color: var(--hub-fg);
+  font-family: var(--font-display);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  box-shadow: inset 0 -6px 0 rgba(0,0,0,0.25);
+}
+.hub button:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 3px; }
+.hub .big { font-family: var(--font-mono); font-size: clamp(1.8rem, 8vmin, 3.2rem); line-height: 1; font-variant-numeric: tabular-nums; }
+.hub .big.word { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.3rem, 5.6vmin, 2.2rem); }
+.hub .small { font-size: clamp(0.62rem, 2.2vmin, 0.85rem); text-transform: uppercase; letter-spacing: 0.14em; opacity: 0.75; font-weight: 600; }
+
+.status { min-height: 1.6em; font-size: 1.15rem; font-weight: 600; text-align: center; color: var(--fg); }
+.status .hint { color: var(--muted); font-weight: 500; }
+
+footer { width: 100%; max-width: 560px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.chip {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 2px; }
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.keys { width: 100%; text-align: center; font-size: 0.8rem; color: var(--muted); }
+@media (hover: none) { .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .disc.shake { animation: none; }
+  .pad { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><span class="dots" aria-hidden="true"><i style="background:var(--red-lit)"></i><i style="background:var(--blue-lit)"></i><i style="background:var(--green-lit)"></i><i style="background:var(--yellow-lit)"></i></span>Echo Wheel</h1>
+    <div class="stats">
+      <div class="stat" id="livesStat"><span class="k">Lives</span><span class="v hearts" id="hearts" aria-live="polite"></span></div>
+      <div class="stat"><span class="k">Best</span><span class="v" id="best">0</span></div>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="disc-wrap" id="discWrap">
+      <svg class="disc" id="disc" viewBox="-100 -100 200 200" role="group" aria-label="Colour disc">
+        <circle class="rim" r="99"></circle>
+        <g id="pads"></g>
+      </svg>
+      <div class="hub"><button id="hub" type="button" aria-label="Start game"><span class="big word" id="hubBig">Start</span><span class="small" id="hubSmall">tap to play</span></button></div>
+    </div>
+  </div>
+
+  <div class="status" id="status" aria-live="polite"><span class="hint">Watch the lights, then repeat them.</span></div>
+
+  <footer>
+    <button class="chip" id="strictBtn" type="button" aria-pressed="false">Strict mode</button>
+    <button class="chip" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    <button class="chip" id="speedBtn" type="button">Speed: Normal</button>
+    <div class="keys">Keyboard: arrow keys or 1 to 4 for the colours, Space to start</div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  // Pads go clockwise from the top. Tones form an A major chord so any sequence sounds musical.
+  var PADS = [
+    { c: 'red',    name: 'Red',    angle: -90, freq: 329.63, keys: ['ArrowUp', '1'] },
+    { c: 'blue',   name: 'Blue',   angle: 0,   freq: 440.00, keys: ['ArrowRight', '2'] },
+    { c: 'yellow', name: 'Yellow', angle: 90,  freq: 554.37, keys: ['ArrowDown', '3'] },
+    { c: 'green',  name: 'Green',  angle: 180, freq: 659.25, keys: ['ArrowLeft', '4'] }
+  ];
+  var SPEEDS = [
+    { name: 'Relaxed', mult: 1.35 },
+    { name: 'Normal', mult: 1 },
+    { name: 'Fast', mult: 0.7 }
+  ];
+  var MAX_LIVES = 3;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var padsG = $('pads'), disc = $('disc'), hub = $('hub'), hubBig = $('hubBig'), hubSmall = $('hubSmall');
+  var statusEl = $('status'), bestEl = $('best'), heartsEl = $('hearts'), livesStat = $('livesStat');
+  var strictBtn = $('strictBtn'), soundBtn = $('soundBtn'), speedBtn = $('speedBtn');
+
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem('echowheel.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem('echowheel.' + k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  var settings = { strict: store.get('strict', false), sound: store.get('sound', true), speed: store.get('speed', 1) };
+  var best = store.get('best', { strict: 0, relaxed: 0 });
+  var state = 'idle'; // idle | showing | input | between | over
+  var seq = [], step = 0, lives = MAX_LIVES, token = 0;
+
+  // ---- Build the disc ----
+  function polar(r, deg) { var a = deg * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; }
+  function wedge(center, R, r) {
+    var a0 = center - 45, a1 = center + 45;
+    var p1 = polar(R, a0), p2 = polar(R, a1), p3 = polar(r, a1), p4 = polar(r, a0);
+    return 'M' + p1 + 'A' + R + ' ' + R + ' 0 0 1 ' + p2 + 'L' + p3 + 'A' + r + ' ' + r + ' 0 0 0 ' + p4 + 'Z';
+  }
+  var padEls = PADS.map(function (p, i) {
+    var el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('d', wedge(p.angle, 94, 30));
+    el.setAttribute('class', 'pad');
+    el.setAttribute('data-c', p.c);
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('aria-label', p.name);
+    el.addEventListener('pointerdown', function (e) { e.preventDefault(); press(i); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); press(i); } });
+    padsG.appendChild(el);
+    return el;
+  });
+
+  // ---- Sound ----
+  var ctx = null;
+  function ensureAudio() {
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } }
+    if (ctx && ctx.state === 'suspended') { ctx.resume().catch(function () {}); }
+  }
+  function tone(freq, ms, type, vol) {
+    if (!settings.sound || !ctx) return;
+    try {
+      var t = ctx.currentTime, d = ms / 1000;
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type || 'triangle';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol || 0.3, t + 0.012);
+      g.gain.setValueAtTime(vol || 0.3, t + Math.max(0.02, d - 0.06));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + d + 0.05);
+    } catch (e) {}
+  }
+  function buzz() {
+    tone(98, 480, 'sawtooth', 0.18);
+    tone(92, 480, 'square', 0.08);
+    try { if (navigator.vibrate) navigator.vibrate([90, 40, 90]); } catch (e) {}
+  }
+
+  // ---- Helpers ----
+  function wait(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  function flash(i, ms) {
+    var el = padEls[i];
+    el.classList.add('lit');
+    tone(PADS[i].freq, ms);
+    return wait(ms).then(function () { el.classList.remove('lit'); });
+  }
+  function timing() {
+    var n = seq.length, m = SPEEDS[settings.speed].mult;
+    var on = Math.max(160, 470 - n * 16) * m;
+    return { on: on, off: Math.max(70, on * 0.42) };
+  }
+  function bestKey() { return settings.strict ? 'strict' : 'relaxed'; }
+  function setStatus(text, hint) {
+    statusEl.innerHTML = '';
+    var s = document.createElement('span');
+    if (hint) s.className = 'hint';
+    s.textContent = text;
+    statusEl.appendChild(s);
+  }
+  function setHub(big, small, isWord) {
+    hubBig.textContent = big;
+    hubBig.className = 'big' + (isWord ? ' word' : '');
+    hubSmall.textContent = small;
+  }
+  function render() {
+    bestEl.textContent = best[bestKey()] || 0;
+    livesStat.hidden = settings.strict;
+    var h = '';
+    for (var i = 0; i < MAX_LIVES; i++) h += i < lives ? '♥' : '<span class="gone">♥</span>';
+    heartsEl.innerHTML = h;
+    heartsEl.setAttribute('aria-label', lives + ' of ' + MAX_LIVES + ' lives');
+    strictBtn.setAttribute('aria-pressed', String(settings.strict));
+    soundBtn.setAttribute('aria-pressed', String(settings.sound));
+    soundBtn.textContent = settings.sound ? 'Sound on' : 'Sound off';
+    speedBtn.textContent = 'Speed: ' + SPEEDS[settings.speed].name;
+    var playing = state !== 'idle' && state !== 'over';
+    strictBtn.disabled = playing;
+    speedBtn.disabled = playing;
+    disc.classList.toggle('locked', state !== 'input');
+    hub.setAttribute('aria-label', playing ? 'Round ' + seq.length : 'Start game');
+  }
+
+  // ---- Game flow ----
+  function start() {
+    ensureAudio();
+    token++;
+    seq = []; step = 0; lives = MAX_LIVES;
+    setStatus('Get ready');
+    nextRound(600);
+  }
+  function nextRound(delay) {
+    seq.push(Math.floor(Math.random() * 4));
+    state = 'between';
+    setHub(String(seq.length), 'round');
+    render();
+    var my = token;
+    wait(delay).then(function () { if (my === token) playSequence(); });
+  }
+  function playSequence() {
+    var my = ++token;
+    state = 'showing';
+    setStatus('Watch');
+    render();
+    var t = timing(), i = 0;
+    (function next() {
+      if (my !== token) return;
+      if (i >= seq.length) {
+        state = 'input'; step = 0;
+        setStatus(settings.strict ? 'Your turn' : 'Your turn (tap the centre to replay)');
+        render();
+        return;
+      }
+      flash(seq[i++], t.on).then(function () { return wait(t.off); }).then(next);
+    })();
+  }
+  function press(i) {
+    ensureAudio();
+    if (state === 'idle' || state === 'over') { flash(i, 180); return; }
+    if (state !== 'input') return;
+    if (i === seq[step]) {
+      flash(i, 200);
+      step++;
+      if (step === seq.length) {
+        state = 'between';
+        var k = bestKey();
+        if (seq.length > (best[k] || 0)) { best[k] = seq.length; store.set('best', best); }
+        setStatus(seq.length % 5 === 0 ? seq.length + ' in a row. Keep going!' : 'Correct');
+        render();
+        var my = token;
+        wait(500).then(function () { if (my === token) nextRound(450); });
+      }
+    } else {
+      mistake();
+    }
+  }
+  function mistake() {
+    token++;
+    buzz();
+    disc.classList.remove('shake'); void disc.getBoundingClientRect(); disc.classList.add('shake');
+    if (!settings.strict) lives--;
+    if (settings.strict || lives <= 0) { gameOver(); return; }
+    state = 'between';
+    setStatus('Wrong colour. Watch again.');
+    render();
+    var my = token;
+    wait(1100).then(function () { if (my === token) playSequence(); });
+  }
+  function gameOver() {
+    state = 'over';
+    var score = seq.length - 1;
+    var isBest = score > 0 && score >= (best[bestKey()] || 0);
+    setHub(String(score), 'tap to retry');
+    setStatus(isBest ? 'Game over. New best: ' + score + '!' : 'Game over. You repeated ' + score + (score === 1 ? ' colour.' : ' colours.'));
+    render();
+    var my = token;
+    wait(650).then(function () {
+      if (my !== token) return;
+      padEls.forEach(function (el) { el.classList.add('lit'); });
+      return wait(260).then(function () { padEls.forEach(function (el) { el.classList.remove('lit'); }); });
+    });
+  }
+
+  // ---- Controls ----
+  hub.addEventListener('click', function () {
+    if (state === 'idle' || state === 'over') start();
+    else if (state === 'input' && !settings.strict) playSequence(); // relaxed mode: tap the hub to see the pattern again
+  });
+  strictBtn.addEventListener('click', function () { settings.strict = !settings.strict; store.set('strict', settings.strict); render(); });
+  soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
+  speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.repeat) return;
+    if (e.key === ' ' || e.key === 'Enter') {
+      if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+      if (state === 'idle' || state === 'over') { e.preventDefault(); start(); }
+      return;
+    }
+    for (var i = 0; i < PADS.length; i++) {
+      if (PADS[i].keys.indexOf(e.key) !== -1) { e.preventDefault(); press(i); return; }
+    }
+  });
+
+  render();
+
+  // Installable app support (ignored where service workers are unavailable).
+  try {
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
