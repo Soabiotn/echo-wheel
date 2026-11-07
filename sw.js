@@ -1,5 +1,5 @@
 // Offline cache for Echo Wheel. Bump VERSION when you change any file.
-const VERSION = 'echo-wheel-v2';
+const VERSION = 'echo-wheel-v3';
 const CORE = ['./', './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

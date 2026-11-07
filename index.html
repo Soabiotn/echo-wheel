@@ -118,8 +118,48 @@ h1 .dots i { width: 7px; height: 7px; border-radius: 50%; display: block; }
 .board.compact .card .detail { display: none; }
 
 /* Disc */
-.stage { flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; }
-.disc-wrap { width: min(92vw, 100%, 56vh, 520px); aspect-ratio: 1; max-width: 100%; position: relative; }
+/* Table: the disc sits in the middle; in multiplayer each seat's name faces the player sitting on that side. */
+.table {
+  flex: 1; min-height: 0; width: 100%; max-width: 640px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: ". top ." "left mid right" ". bottom .";
+  align-items: center; justify-items: center; gap: 4px;
+}
+.app.multi { padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
+.mid { grid-area: mid; width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; container-type: size; }
+.disc-wrap { width: min(100cqw, 100cqh, 540px); aspect-ratio: 1; max-width: 100%; max-height: 100%; position: relative; }
+.seat { display: none; text-align: center; max-width: 100%; max-height: 100%; }
+.multi .seat.on { display: block; }
+.seat[data-pos="bottom"] { grid-area: bottom; }
+.seat[data-pos="top"]    { grid-area: top; transform: rotate(180deg); }
+.seat[data-pos="left"]   { grid-area: left; writing-mode: vertical-rl; }
+.seat[data-pos="right"]  { grid-area: right; writing-mode: vertical-rl; transform: rotate(180deg); }
+.seat-in {
+  display: flex; flex-flow: row wrap; align-items: baseline; justify-content: center; gap: 0 10px;
+  padding-block: 4px; padding-inline: 12px;
+  border-radius: 14px; border: 2px solid transparent;
+  max-inline-size: min(78vw, 70vh, 420px);
+  transition: border-color 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+}
+.seat-name { font-weight: 700; font-size: clamp(1.25rem, 5.4vmin, 1.9rem); line-height: 1.1; letter-spacing: 0.01em; max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-line { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; white-space: nowrap; }
+.seat-line .hearts { color: var(--heart); letter-spacing: 1px; }
+.seat-line .hearts .gone { color: var(--line); }
+.seat-line .pts { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.seat-msg { flex-basis: 100%; text-align: center; font-size: 0.85rem; font-weight: 600; color: var(--muted); min-block-size: 1.3em; max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat.current .seat-in { border-color: var(--fg); background: var(--surface); }
+.seat.current .seat-msg { color: var(--fg); }
+.seat.current .seat-msg.warn { color: var(--heart); }
+.seat.out .seat-in { opacity: 0.45; }
+.multi .board { display: none; }
+.multi .status { display: none; }
+.names { display: grid; gap: 8px; }
+.names label { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); align-items: center; gap: 10px; font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+.names input { font: inherit; font-weight: 600; font-size: 1.05rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; min-width: 0; width: 100%; }
+.names input:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 1px; }
+.pause-big { font-size: 3rem; text-align: center; margin: 0; }
 svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
 .disc.shake { animation: shake 0.42s ease; }
 @keyframes shake {
@@ -145,6 +185,7 @@ svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
   border: 4px solid var(--bg); background: var(--hub); color: var(--hub-fg);
   cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; padding: 0 6px; box-shadow: inset 0 -6px 0 rgba(0,0,0,0.25); overflow: hidden;
+  transform: rotate(var(--face, 0deg)); transition: transform 0.45s ease;
 }
 .hub button:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 3px; }
 .hub .big { font-family: var(--font-mono); font-size: clamp(1.8rem, 8vmin, 3.2rem); line-height: 1; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -248,14 +289,20 @@ tr.fresh td { background: var(--surface-2); }
 
   <div class="board" id="board" aria-live="polite"></div>
 
-  <div class="stage">
-    <div class="disc-wrap">
-      <svg class="disc" id="disc" viewBox="-100 -100 200 200" role="group" aria-label="Colour disc">
-        <circle class="rim" r="99"></circle>
-        <g id="pads"></g>
-      </svg>
-      <div class="hub"><button id="hub" type="button" aria-label="Start game"><span class="big word" id="hubBig">Start</span><span class="small" id="hubSmall">tap to play</span></button></div>
+  <div class="table" id="table">
+    <div class="seat" data-pos="top"></div>
+    <div class="seat" data-pos="left"></div>
+    <div class="mid">
+      <div class="disc-wrap">
+        <svg class="disc" id="disc" viewBox="-100 -100 200 200" role="group" aria-label="Colour disc">
+          <circle class="rim" r="99"></circle>
+          <g id="pads"></g>
+        </svg>
+        <div class="hub"><button id="hub" type="button" aria-label="Start game"><span class="big word" id="hubBig">Start</span><span class="small" id="hubSmall">tap to play</span></button></div>
+      </div>
     </div>
+    <div class="seat" data-pos="right"></div>
+    <div class="seat" data-pos="bottom"></div>
   </div>
 
   <div class="status" id="status" aria-live="polite"><span class="hint">Watch the lights, then repeat them.</span></div>
@@ -265,6 +312,7 @@ tr.fresh td { background: var(--surface-2); }
     <button class="chip" id="strictBtn" type="button" aria-pressed="false">Strict mode</button>
     <button class="chip" id="speedBtn" type="button">Speed: Normal</button>
     <button class="chip" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    <button class="chip" id="pauseBtn" type="button" hidden>&#10074;&#10074; Pause</button>
     <button class="chip danger" id="endBtn" type="button" hidden>End game</button>
     <div class="keys">Keyboard: arrow keys or 1 to 4 for the colours, Space to start or take your turn</div>
   </footer>
@@ -277,8 +325,22 @@ tr.fresh td { background: var(--surface-2); }
     <div class="seg" id="countSeg">
       <button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4">4</button>
     </div>
+    <div class="names" id="nameFields"></div>
     <p class="note" id="playersNote"></p>
-    <div class="row-actions"><button class="btn primary" id="playersStart" type="button">Start game</button><button class="btn" type="button" data-close>Done</button></div>
+    <div class="row-actions"><button class="btn primary" id="playersStart" type="button">Start game</button><button class="btn" type="button" data-close>Cancel</button></div>
+  </div>
+</div>
+
+<!-- Pause sheet -->
+<div class="sheet" id="pauseSheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+    <p class="pause-big" aria-hidden="true">&#10074;&#10074;</p>
+    <h2 id="pauseTitle" style="text-align:center">Game paused</h2>
+    <p class="note" id="pauseNote" style="text-align:center"></p>
+    <div class="row-actions" style="justify-content:center">
+      <button class="btn primary" id="resumeBtn" type="button">Resume</button>
+      <button class="btn" id="pauseEndBtn" type="button">End game</button>
+    </div>
   </div>
 </div>
 
@@ -367,8 +429,14 @@ tr.fresh td { background: var(--surface-2); }
   var els = {
     pads: $('pads'), disc: $('disc'), hub: $('hub'), hubBig: $('hubBig'), hubSmall: $('hubSmall'),
     status: $('status'), board: $('board'), best: $('best'), bestWho: $('bestWho'), bestMode: $('bestMode'),
-    playersBtn: $('playersBtn'), strictBtn: $('strictBtn'), soundBtn: $('soundBtn'), speedBtn: $('speedBtn'), endBtn: $('endBtn')
+    playersBtn: $('playersBtn'), strictBtn: $('strictBtn'), soundBtn: $('soundBtn'), speedBtn: $('speedBtn'), endBtn: $('endBtn'),
+    pauseBtn: $('pauseBtn'), app: document.querySelector('.app')
   };
+  var seatEls = {};
+  document.querySelectorAll('.seat').forEach(function (s) { seatEls[s.dataset.pos] = s; });
+  // Seats go clockwise around the table starting with the player nearest the bottom edge.
+  var SEATS = { 1: ['bottom'], 2: ['bottom', 'top'], 3: ['bottom', 'left', 'right'], 4: ['bottom', 'left', 'top', 'right'] };
+  var FACE = { bottom: 0, left: 90, top: 180, right: -90 };
 
   // ---- Disc ----
   function polar(r, deg) { var a = deg * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; }
@@ -436,11 +504,14 @@ tr.fresh td { background: var(--surface-2); }
   function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
   function cleanName(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16); }
   function defaultName(i) { return 'Player ' + (i + 1); }
-  function setStatus(text, kind) {
+  var message = { text: 'Watch the lights, then repeat them.', kind: 'hint' };
+  function setStatus(text, kind) { message = { text: text, kind: kind || '' }; paintStatus(); }
+  function paintStatus() {
     els.status.textContent = '';
-    var s = el('span', kind === 'hint' ? 'hint' : '', text);
-    els.status.className = 'status' + (kind === 'warn' ? ' warn' : '');
-    els.status.appendChild(s);
+    els.status.className = 'status' + (message.kind === 'warn' ? ' warn' : '');
+    els.status.appendChild(el('span', message.kind === 'hint' ? 'hint' : '', message.text));
+    var m = document.querySelector('.seat.current .seat-msg');
+    if (m) { m.textContent = message.text; m.className = 'seat-msg' + (message.kind === 'warn' ? ' warn' : ''); m.title = message.text; }
   }
   function setHub(big, small, isWord) {
     els.hubBig.textContent = big;
@@ -451,8 +522,10 @@ tr.fresh td { background: var(--surface-2); }
   function livesFor() { return settings.strict ? 1 : MAX_LIVES; }
 
   // ---- Game state ----
-  var state = 'idle'; // idle | handoff | showing | input | between | over
+  var state = 'idle'; // idle | handoff | countdown | showing | input | between | paused | over
   var seq = [], step = 0, token = 0, cur = 0, players = [], lastGame = null;
+  var pendingNext = false, resumeAction = null;
+  function playing() { return state !== 'idle' && state !== 'over'; }
 
   function makePlayers() {
     var list = [];
@@ -471,6 +544,8 @@ tr.fresh td { background: var(--surface-2); }
     seq = [rnd()];
     cur = 0;
     lastGame = null;
+    pendingNext = false; resumeAction = null;
+    keepAwake(true);
     beginTurn(true);
   }
   function rnd() { return Math.floor(Math.random() * 4); }
@@ -478,34 +553,94 @@ tr.fresh td { background: var(--surface-2); }
   function beginTurn(first) {
     var p = players[cur];
     step = 0;
+    pendingNext = false;
+    if (first) { countdown(playSequence); return; }
     if (multi()) {
       state = 'handoff';
       setHub(p.label, 'tap when ready', true);
-      setStatus('Round ' + seq.length + ': pass to ' + p.label + '. Tap the centre when ready.');
+      setStatus('Round ' + seq.length + '. Tap the centre when ready.');
       render();
     } else {
       state = 'between';
       setHub(String(seq.length), 'round');
-      setStatus(first ? 'Get ready' : 'Round ' + seq.length);
+      setStatus('Round ' + seq.length);
       render();
       var my = token;
-      wait(first ? 600 : 450).then(function () { if (my === token) playSequence(); });
+      wait(450).then(function () { if (my === token) playSequence(); });
     }
   }
+
+  // 3-2-1 before a turn starts (and after a pause).
+  function countdown(then) {
+    var my = ++token, n = 3;
+    state = 'countdown';
+    (function tick() {
+      if (my !== token) return;
+      if (n === 0) { tone(880, 220, 'triangle', 0.25); then(); return; }
+      setHub(String(n), 'get ready');
+      setStatus((multi() ? players[cur].label + ', get ready: ' : 'Get ready: ') + n);
+      render();
+      tone(587.33, 120, 'triangle', 0.2);
+      n--;
+      setTimeout(tick, 1000);
+    })();
+  }
+
+  // ---- Pause ----
+  function pause() {
+    if (!playing() || state === 'paused') return;
+    var was = state;
+    token++;
+    padEls.forEach(function (e) { e.classList.remove('lit'); });
+    if (was === 'handoff') resumeAction = function () { beginTurn(false); };
+    else if (pendingNext) resumeAction = function () { nextPlayer(); };
+    else resumeAction = function () { countdown(playSequence); };
+    state = 'paused';
+    setHub('II', 'paused', true);
+    setStatus('Paused');
+    $('pauseNote').textContent = multi()
+      ? 'Next up: ' + (pendingNext ? 'the next player' : players[cur].label) + '. Resuming counts down from 3, then shows the whole pattern again.'
+      : 'Resuming counts down from 3, then shows the whole pattern again.';
+    render();
+    showSheet('pauseSheet');
+    keepAwake(false);
+  }
+  function resume() {
+    if (state !== 'paused') return;
+    closeSheets();
+    ensureAudio();
+    keepAwake(true);
+    var a = resumeAction; resumeAction = null;
+    state = 'between';
+    (a || function () { countdown(playSequence); })();
+  }
+
+  // Keep the screen on while the phone lies on the table.
+  var wakeLock = null;
+  function keepAwake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock) {
+        navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; l.addEventListener('release', function () { wakeLock = null; }); }).catch(function () {});
+      } else if (!on && wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (playing() && state !== 'paused') pause(); }
+    else if (playing() && state !== 'paused') keepAwake(true);
+  });
 
   function playSequence() {
     var my = ++token;
     state = 'showing';
     setHub(String(seq.length), multi() ? players[cur].label : 'round');
-    setStatus((multi() ? players[cur].label + ': w' : 'W') + 'atch ' + plural(seq.length, 'colour'));
+    setStatus('Watch ' + plural(seq.length, 'colour'));
     render();
     var t = timing(), i = 0;
     (function next() {
       if (my !== token) return;
       if (i >= seq.length) {
         state = 'input'; step = 0;
-        var who = multi() ? players[cur].label + ', your turn' : 'Your turn';
-        setStatus(settings.strict ? who : who + ' (tap the centre to replay)');
+        setStatus(settings.strict ? 'Your turn' : 'Your turn (tap the centre to replay)');
         render();
         return;
       }
@@ -524,7 +659,8 @@ tr.fresh td { background: var(--surface-2); }
         var p = players[cur];
         p.score = seq.length;
         state = 'between';
-        setStatus((multi() ? p.label + ': ' : '') + (seq.length % 5 === 0 ? seq.length + ' in a row. Keep going!' : 'Correct, ' + plural(seq.length, 'colour') + '.'));
+        setStatus(seq.length % 5 === 0 ? seq.length + ' in a row. Keep going!' : 'Correct, ' + plural(seq.length, 'colour') + '.');
+        pendingNext = true;
         render();
         var my = token;
         wait(600).then(function () { if (my === token) nextPlayer(); });
@@ -543,12 +679,13 @@ tr.fresh td { background: var(--surface-2); }
     var needed = seq[step];
     p.lives--;
     p.lost.push({ round: seq.length, at: step + 1, pressed: pressed, needed: needed });
-    var who = multi() ? p.label + ': ' : '';
-    var what = 'pressed ' + PADS[pressed].name + ', needed ' + PADS[needed].name + ' (colour ' + (step + 1) + ' of ' + seq.length + ').';
+    var who = '';
+    var what ='pressed ' + PADS[pressed].name + ', needed ' + PADS[needed].name + ' (colour ' + (step + 1) + ' of ' + seq.length + ').';
     state = 'between';
     if (p.lives <= 0) {
       p.alive = false;
       p.outRound = seq.length;
+      pendingNext = true;
       setStatus(who + capital(what) + (multi() ? ' Out with a score of ' + p.score + '.' : ''), 'warn');
       render();
       wait(multi() ? 1800 : 1200).then(function () { if (my === token) nextPlayer(); });
@@ -561,6 +698,7 @@ tr.fresh td { background: var(--surface-2); }
   function capital(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
   function nextPlayer() {
+    pendingNext = false;
     for (var j = cur + 1; j < players.length; j++) { if (players[j].alive) { cur = j; beginTurn(false); return; } }
     var firstAlive = -1;
     for (var k = 0; k < players.length; k++) { if (players[k].alive) { firstAlive = k; break; } }
@@ -577,6 +715,8 @@ tr.fresh td { background: var(--surface-2); }
   function gameOver() {
     token++;
     state = 'over';
+    pendingNext = false; resumeAction = null;
+    keepAwake(false);
     var order = ranked(players);
     var top = order[0];
     var tie = order.length > 1 && order[1].score === top.score && order[1].lost.length === top.lost.length;
@@ -606,7 +746,8 @@ tr.fresh td { background: var(--surface-2); }
   }
 
   function endGameEarly() {
-    if (state === 'idle' || state === 'over') return;
+    if (!playing()) return;
+    closeSheets();
     players.forEach(function (p) { if (p.alive) { p.alive = false; p.outRound = seq.length; } });
     gameOver();
   }
@@ -630,10 +771,10 @@ tr.fresh td { background: var(--surface-2); }
     els.board.style.setProperty('--n', n);
     els.board.classList.toggle('compact', n >= 3);
     els.board.textContent = '';
-    var playing = state !== 'idle' && state !== 'over';
+    var isPlaying = playing();
     players.forEach(function (p, i) {
       var c = el('div', 'card');
-      if (playing && i === cur && p.alive) c.classList.add('current');
+      if (isPlaying && i === cur && p.alive) c.classList.add('current');
       if (!p.alive) c.classList.add('out');
       c.appendChild(el('div', 'name', p.label + (p.alive ? '' : ' (out)')));
       var sc = el('div', 'score', String(p.score));
@@ -658,6 +799,38 @@ tr.fresh td { background: var(--surface-2); }
       els.board.appendChild(c);
     });
 
+    // Seats around the table (multiplayer)
+    var seats = SEATS[n] || SEATS[1];
+    els.app.classList.toggle('multi', n > 1);
+    Object.keys(seatEls).forEach(function (k) { seatEls[k].className = 'seat'; seatEls[k].textContent = ''; });
+    if (n > 1) {
+      players.forEach(function (p, i) {
+        var s = seatEls[seats[i]];
+        s.classList.add('on');
+        if (isPlaying && i === cur && p.alive) s.classList.add('current');
+        if (!p.alive) s.classList.add('out');
+        var inner = el('div', 'seat-in');
+        inner.appendChild(el('div', 'seat-name', p.label));
+        var line = el('div', 'seat-line');
+        var h = el('span', 'hearts');
+        for (var k = 0; k < p.maxLives; k++) h.appendChild(el('span', k < p.lives ? '' : 'gone', '♥'));
+        h.setAttribute('aria-label', p.lives + ' of ' + p.maxLives + ' lives left');
+        line.appendChild(h);
+        line.appendChild(el('span', 'pts', 'Score ' + p.score));
+        inner.appendChild(line);
+        var msg = '';
+        if (!p.alive) msg = 'Out in round ' + p.outRound;
+        else if (!playing()) msg = i === 0 ? 'Goes first' : 'Turn ' + (i + 1);
+        else if (i !== cur) msg = p.lost.length ? plural(p.lives, 'life').replace('lifes', 'lives') + ' left' : 'Waiting';
+        inner.appendChild(el('div', 'seat-msg', msg));
+        s.appendChild(inner);
+      });
+    }
+    var face = n > 1 && playing() && players[cur] ? FACE[seats[cur]] : 0;
+    els.hub.style.setProperty('--face', face + 'deg');
+    els.pauseBtn.hidden = !playing() || state === 'paused';
+    paintStatus();
+
     var best = bestFor(settings.strict, settings.speed);
     els.best.textContent = best ? best.score : 0;
     els.bestWho.textContent = best ? best.name : 'No record yet';
@@ -669,12 +842,12 @@ tr.fresh td { background: var(--surface-2); }
     els.soundBtn.setAttribute('aria-pressed', String(settings.sound));
     els.soundBtn.textContent = settings.sound ? 'Sound on' : 'Sound off';
     els.speedBtn.textContent = 'Speed: ' + SPEEDS[settings.speed].name;
-    els.playersBtn.disabled = playing;
-    els.strictBtn.disabled = playing;
-    els.speedBtn.disabled = playing;
-    els.endBtn.hidden = !playing;
+    els.playersBtn.hidden = isPlaying;
+    els.strictBtn.hidden = isPlaying;
+    els.speedBtn.hidden = isPlaying;
+    els.endBtn.hidden = !isPlaying;
     els.disc.classList.toggle('locked', state !== 'input');
-    els.hub.setAttribute('aria-label', state === 'handoff' ? players[cur].label + ': start your turn' : playing ? 'Round ' + seq.length : 'Start game');
+    els.hub.setAttribute('aria-label', state === 'handoff' ? players[cur].label + ': start your turn' : isPlaying ? 'Round ' + seq.length : 'Start game');
   }
 
   // ---- Sheets ----
@@ -687,28 +860,61 @@ tr.fresh td { background: var(--surface-2); }
     if (f) setTimeout(function () { try { f.focus(); } catch (e) {} }, 30);
   }
   function closeSheets() {
-    ['playersSheet', 'resultSheet', 'statsSheet'].forEach(function (id) { $(id).hidden = true; });
+    ['playersSheet', 'resultSheet', 'statsSheet', 'pauseSheet'].forEach(function (id) { $(id).hidden = true; });
     openSheet = null;
   }
   document.querySelectorAll('.sheet').forEach(function (s) {
-    s.addEventListener('click', function (e) { if (e.target === s || e.target.hasAttribute('data-close')) closeSheets(); });
+    s.addEventListener('click', function (e) {
+      if (s.id === 'pauseSheet') return; // only Resume or End game leave the pause screen
+      if (e.target === s || e.target.hasAttribute('data-close')) closeSheets();
+    });
   });
 
-  // Players sheet
+  // Players sheet: how many, and everyone's name before the game starts
+  var SEAT_WORDS = { bottom: 'bottom edge', left: 'left side', top: 'top edge', right: 'right side' };
+  function readNameFields() {
+    for (var i = 0; i < 4; i++) {
+      var inp = $('pname' + i);
+      if (inp) settings.names[i] = cleanName(inp.value);
+    }
+    store.set('names', settings.names);
+  }
   function renderPlayersSheet() {
     document.querySelectorAll('#countSeg button').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.n === settings.count)); });
+    var box = $('nameFields');
+    box.textContent = '';
+    var seats = SEATS[settings.count];
+    for (var i = 0; i < settings.count; i++) {
+      var lab = el('label');
+      lab.setAttribute('for', 'pname' + i);
+      lab.appendChild(el('span', null, settings.count === 1 ? 'Your name' : 'Player ' + (i + 1)));
+      var inp = el('input');
+      inp.type = 'text'; inp.id = 'pname' + i; inp.maxLength = 16; inp.autocomplete = 'off';
+      inp.placeholder = settings.count === 1 ? 'Optional' : 'Sits at the ' + SEAT_WORDS[seats[i]];
+      inp.value = settings.names[i] || '';
+      lab.appendChild(inp);
+      box.appendChild(lab);
+    }
+    $('playersTitle').textContent = settings.count === 1 ? 'Solo game' : 'Who’s playing?';
     $('playersNote').textContent = settings.count === 1
-      ? 'Solo game. Your score goes on the leaderboard at the end.'
-      : settings.count + ' players take turns on this device. Everyone repeats the same pattern each round. When you run out of lives you are out; the longest pattern wins. You enter your names at the end.';
+      ? 'Your score goes on the leaderboard at the end.'
+      : 'Lay the phone flat in the middle of the table. Each name appears in bold facing that player, and the centre turns to face whoever’s turn it is. Player 1 sits at the bottom edge and turns go clockwise. Everyone repeats the same pattern each round; the longest pattern wins.';
   }
   document.querySelectorAll('#countSeg button').forEach(function (b) {
     b.addEventListener('click', function () {
+      readNameFields();
       settings.count = +b.dataset.n; store.set('count', settings.count);
       players = makePlayers(); state = 'idle'; setHub('Start', 'tap to play', true);
       renderPlayersSheet(); render();
     });
   });
-  $('playersStart').addEventListener('click', start);
+  $('playersStart').addEventListener('click', function () { readNameFields(); start(); });
+  $('playersSheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); readNameFields(); start(); } });
+  $('playersSheet').addEventListener('input', function () { readNameFields(); players = makePlayers(); render(); });
+  function requestStart() {
+    if (settings.count > 1) { renderPlayersSheet(); showSheet('playersSheet'); }
+    else start();
+  }
 
   // Results sheet
   function openResults() {
@@ -910,10 +1116,14 @@ tr.fresh td { background: var(--surface-2); }
 
   // ---- Controls ----
   els.hub.addEventListener('click', function () {
-    if (state === 'idle' || state === 'over') start();
-    else if (state === 'handoff') { ensureAudio(); playSequence(); }
+    if (state === 'idle' || state === 'over') requestStart();
+    else if (state === 'handoff') { ensureAudio(); countdown(playSequence); }
+    else if (state === 'paused') resume();
     else if (state === 'input' && !settings.strict) playSequence();
   });
+  els.pauseBtn.addEventListener('click', pause);
+  $('resumeBtn').addEventListener('click', resume);
+  $('pauseEndBtn').addEventListener('click', endGameEarly);
   els.playersBtn.addEventListener('click', function () { renderPlayersSheet(); showSheet('playersSheet'); });
   els.strictBtn.addEventListener('click', function () { settings.strict = !settings.strict; store.set('strict', settings.strict); players = makePlayers(); render(); });
   els.soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
@@ -922,13 +1132,15 @@ tr.fresh td { background: var(--surface-2); }
   $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict); });
 
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && state === 'paused') { resume(); return; }
     if (e.key === 'Escape' && openSheet) { closeSheets(); return; }
     if (openSheet || e.repeat) return;
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === 'p' || e.key === 'P') { if (playing()) { e.preventDefault(); pause(); } return; }
     if (e.key === ' ' || e.key === 'Enter') {
       if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
-      if (state === 'idle' || state === 'over') { e.preventDefault(); start(); }
-      else if (state === 'handoff') { e.preventDefault(); ensureAudio(); playSequence(); }
+      if (state === 'idle' || state === 'over') { e.preventDefault(); requestStart(); }
+      else if (state === 'handoff') { e.preventDefault(); ensureAudio(); countdown(playSequence); }
       return;
     }
     for (var i = 0; i < PADS.length; i++) {
