@@ -30,6 +30,7 @@
   --yellow: #c79a12; --yellow-lit: #ffd84a;
   --green: #2b8a4f;  --green-lit: #4fe08a;
   --heart: #e0404d;
+  --dark-pad: #0b0c14;
   --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
@@ -178,6 +179,9 @@ svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
 .pad[data-c="yellow"].lit { fill: var(--yellow-lit); filter: drop-shadow(0 0 14px var(--yellow-lit)); }
 .pad[data-c="green"].lit  { fill: var(--green-lit);  filter: drop-shadow(0 0 14px var(--green-lit)); }
 .pad:focus-visible { stroke: var(--fg); stroke-width: 3; }
+/* Blackout: every tile goes dark during the player's turn; only the tile being pressed lights up. */
+.disc.blackout .pad:not(.lit) { fill: var(--dark-pad); filter: none; }
+.disc.blackout .rim { fill: var(--dark-pad); }
 .locked .pad { cursor: default; }
 .hub { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .hub button {
@@ -310,6 +314,7 @@ tr.fresh td { background: var(--surface-2); }
   <footer>
     <button class="chip" id="playersBtn" type="button">1 player</button>
     <button class="chip" id="strictBtn" type="button" aria-pressed="false">Strict mode</button>
+    <button class="chip" id="gmBtn" type="button">Mode: Standard</button>
     <button class="chip" id="speedBtn" type="button">Speed: Normal</button>
     <button class="chip" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
     <button class="chip" id="pauseBtn" type="button" hidden>&#10074;&#10074; Pause</button>
@@ -363,12 +368,17 @@ tr.fresh td { background: var(--surface-2); }
 <div class="sheet" id="statsSheet" hidden>
   <div class="panel" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
     <div class="panel-head"><h2 id="statsTitle">Leaderboard</h2><button class="x" type="button" data-close aria-label="Close">&times;</button></div>
+    <div class="tabs" role="tablist" id="gmTabs">
+      <button type="button" role="tab" data-gm="standard">Standard</button>
+      <button type="button" role="tab" data-gm="shuffle">Shuffle</button>
+      <button type="button" role="tab" data-gm="blackout">Blackout</button>
+    </div>
     <div class="tabs" role="tablist" id="boardTabs">
       <button type="button" role="tab" data-mode="relaxed">Relaxed (3 lives)</button>
       <button type="button" role="tab" data-mode="strict">Strict (1 life)</button>
     </div>
     <div class="table-wrap"><table id="lbTable"></table></div>
-    <section><h3>Best score for each setting</h3><div class="table-wrap"><table id="recTable"></table></div></section>
+    <section><h3 id="recTitle">Best score for each setting</h3><div class="table-wrap"><table id="recTable"></table></div></section>
     <section><h3>On this device</h3><div class="tiles" id="tiles"></div></section>
     <section><h3>Players</h3><div class="table-wrap"><table id="playerTable"></table></div></section>
     <section><h3>Recent games</h3><div class="table-wrap"><table id="recentTable"></table></div></section>
@@ -387,6 +397,13 @@ tr.fresh td { background: var(--surface-2); }
     { c: 'green',  name: 'Green',  angle: 180, freq: 659.25, keys: ['ArrowLeft', '4'] }
   ];
   var SPEEDS = [{ name: 'Relaxed', mult: 1.35 }, { name: 'Normal', mult: 1 }, { name: 'Fast', mult: 0.7 }];
+  var GAME_MODES = {
+    standard: { name: 'Standard', about: 'The tiles stay put. Repeat the colours in order.' },
+    shuffle:  { name: 'Shuffle',  about: 'After the pattern plays, the four tiles swap places. Remember the colours, not the positions.' },
+    blackout: { name: 'Blackout', about: 'After the pattern plays, every tile goes dark. A tile only shows its colour while you press it.' }
+  };
+  var GM_ORDER = ['standard', 'shuffle', 'blackout'];
+  function gmOf(x) { return (x && x.gm) || 'standard'; }
   var MAX_LIVES = 3;
   var BOARD_SIZE = 10;
 
@@ -404,6 +421,7 @@ tr.fresh td { background: var(--surface-2); }
     sound: store.get('sound', true),
     speed: store.get('speed', 1),
     count: store.get('count', 1),
+    gm: GM_ORDER.indexOf(store.get('gm', 'standard')) === -1 ? 'standard' : store.get('gm', 'standard'),
     names: store.get('names', [])
   };
 
@@ -430,7 +448,7 @@ tr.fresh td { background: var(--surface-2); }
     pads: $('pads'), disc: $('disc'), hub: $('hub'), hubBig: $('hubBig'), hubSmall: $('hubSmall'),
     status: $('status'), board: $('board'), best: $('best'), bestWho: $('bestWho'), bestMode: $('bestMode'),
     playersBtn: $('playersBtn'), strictBtn: $('strictBtn'), soundBtn: $('soundBtn'), speedBtn: $('speedBtn'), endBtn: $('endBtn'),
-    pauseBtn: $('pauseBtn'), app: document.querySelector('.app')
+    pauseBtn: $('pauseBtn'), app: document.querySelector('.app'), gmBtn: $('gmBtn')
   };
   var seatEls = {};
   document.querySelectorAll('.seat').forEach(function (s) { seatEls[s.dataset.pos] = s; });
@@ -458,6 +476,43 @@ tr.fresh td { background: var(--surface-2); }
     els.pads.appendChild(e);
     return e;
   });
+
+  // ---- Tile positions (Shuffle mode) ----
+  // slot[colour] = position index (0 top, 1 right, 2 bottom, 3 left); rot[colour] = current rotation in degrees.
+  var slot = [0, 1, 2, 3], rot = [0, 0, 0, 0], spinFrame = null;
+  function paintTiles() { padEls.forEach(function (e, i) { e.setAttribute('transform', 'rotate(' + rot[i] + ')'); }); }
+  function resetTiles() {
+    if (spinFrame) cancelAnimationFrame(spinFrame);
+    spinFrame = null;
+    slot = [0, 1, 2, 3]; rot = [0, 0, 0, 0]; paintTiles();
+  }
+  function shuffleTiles(ms) {
+    var next;
+    do { next = slot.slice().sort(function () { return Math.random() - 0.5; }); }
+    while (next.every(function (s, i) { return s === slot[i]; }));
+    var from = rot.slice();
+    var to = rot.map(function (r, i) {
+      var target = (next[i] - i) * 90;               // absolute angle for the new position
+      var delta = ((target - r) % 360 + 360) % 360;  // always turn clockwise
+      if (delta === 0) delta = 360;                  // tiles that land back in place still take a lap
+      return r + delta;
+    });
+    slot = next;
+    return new Promise(function (res) {
+      var t0 = performance.now();
+      var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) { rot = to.map(function (d) { return d % 360; }); paintTiles(); res(); return; }
+      (function frame(now) {
+        var k = Math.min(1, (now - t0) / ms);
+        var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        rot = from.map(function (f, i) { return f + (to[i] - f) * e; });
+        paintTiles();
+        if (k < 1) spinFrame = requestAnimationFrame(frame);
+        else { rot = to.map(function (d) { return d % 360; }); paintTiles(); spinFrame = null; res(); }
+      })(t0);
+    });
+  }
+  function colourAtPosition(p) { return slot.indexOf(p); }
 
   // ---- Sound ----
   var ctx = null;
@@ -499,7 +554,7 @@ tr.fresh td { background: var(--surface-2); }
     var on = Math.max(160, 470 - n * 16) * m;
     return { on: on, off: Math.max(70, on * 0.42) };
   }
-  function modeName(strict, speed) { return (strict ? 'Strict' : 'Relaxed') + ', ' + SPEEDS[speed].name.toLowerCase() + ' speed'; }
+  function modeName(strict, speed, gm) { return GAME_MODES[gm || 'standard'].name + ' · ' + (strict ? 'Strict' : 'Relaxed') + ', ' + SPEEDS[speed].name.toLowerCase() + ' speed'; }
   function fmtDate(t) { if (!t) return 'earlier'; try { return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); } catch (e) { return ''; } }
   function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
   function cleanName(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16); }
@@ -545,6 +600,7 @@ tr.fresh td { background: var(--surface-2); }
     cur = 0;
     lastGame = null;
     pendingNext = false; resumeAction = null;
+    resetTiles();
     keepAwake(true);
     beginTurn(true);
   }
@@ -639,9 +695,19 @@ tr.fresh td { background: var(--surface-2); }
     (function next() {
       if (my !== token) return;
       if (i >= seq.length) {
-        state = 'input'; step = 0;
-        setStatus(settings.strict ? 'Your turn' : 'Your turn (tap the centre to replay)');
-        render();
+        var go = function () {
+          if (my !== token) return;
+          state = 'input'; step = 0;
+          var lead = settings.gm === 'shuffle' ? 'Tiles shuffled. ' : settings.gm === 'blackout' ? 'Lights off. ' : '';
+          setStatus(lead + (settings.strict ? 'Your turn' : 'Your turn (tap the centre to replay)'));
+          render();
+        };
+        if (settings.gm === 'shuffle') {
+          state = 'between';
+          setStatus('Shuffling the tiles…');
+          render();
+          shuffleTiles(Math.max(450, 750 * SPEEDS[settings.speed].mult)).then(go);
+        } else go();
         return;
       }
       flash(seq[i++], t.on).then(function () { return wait(t.off); }).then(next);
@@ -721,10 +787,10 @@ tr.fresh td { background: var(--surface-2); }
     var top = order[0];
     var tie = order.length > 1 && order[1].score === top.score && order[1].lost.length === top.lost.length;
     var winner = multi() && top.score > 0 && !tie ? top : null;
-    var recordBefore = bestFor(settings.strict, settings.speed);
+    var recordBefore = bestFor(settings.strict, settings.speed, settings.gm);
     var isRecord = top.score > 0 && (!recordBefore || top.score > recordBefore.score);
     lastGame = {
-      date: Date.now(), strict: settings.strict, speed: settings.speed, rounds: seq.length,
+      date: Date.now(), strict: settings.strict, speed: settings.speed, gm: settings.gm, rounds: seq.length,
       players: players.map(function (p) { return { label: p.label, name: null, score: p.score, lost: p.lost.slice(), maxLives: p.maxLives }; }),
       winner: winner ? players.indexOf(winner) : null, saved: false, tie: tie && multi()
     };
@@ -753,12 +819,12 @@ tr.fresh td { background: var(--surface-2); }
   }
 
   // ---- Records ----
-  function boardFor(strict) { return stats.board.filter(function (e) { return !!e.strict === !!strict; }).sort(boardOrder); }
-  function bestFor(strict, speed) {
-    var b = stats.board.filter(function (e) { return !!e.strict === !!strict && e.speed === speed; }).sort(boardOrder)[0] || null;
+  function boardFor(strict, gm) { return stats.board.filter(function (e) { return !!e.strict === !!strict && gmOf(e) === gm; }).sort(boardOrder); }
+  function bestFor(strict, speed, gm) {
+    var b = stats.board.filter(function (e) { return !!e.strict === !!strict && e.speed === speed && gmOf(e) === gm; }).sort(boardOrder)[0] || null;
     var g = null;
     stats.games.forEach(function (game) {
-      if (!!game.strict !== !!strict || game.speed !== speed) return;
+      if (!!game.strict !== !!strict || game.speed !== speed || gmOf(game) !== gm) return;
       game.players.forEach(function (p) { if (p.score > 0 && (!g || p.score > g.score)) g = { score: p.score, name: p.name || p.label, date: game.date }; });
     });
     if (b && (!g || b.score >= g.score)) return b;
@@ -831,17 +897,21 @@ tr.fresh td { background: var(--surface-2); }
     els.pauseBtn.hidden = !playing() || state === 'paused';
     paintStatus();
 
-    var best = bestFor(settings.strict, settings.speed);
+    var best = bestFor(settings.strict, settings.speed, settings.gm);
     els.best.textContent = best ? best.score : 0;
     els.bestWho.textContent = best ? best.name : 'No record yet';
     els.bestMode.textContent = 'Best';
-    $('bestBtn').title = 'Best score for ' + modeName(settings.strict, settings.speed) + '. Tap for the leaderboard.';
+    $('bestBtn').title = 'Best score for ' + modeName(settings.strict, settings.speed, settings.gm) + '. Tap for the leaderboard.';
 
     els.playersBtn.textContent = plural(settings.count, 'player');
     els.strictBtn.setAttribute('aria-pressed', String(settings.strict));
     els.soundBtn.setAttribute('aria-pressed', String(settings.sound));
     els.soundBtn.textContent = settings.sound ? 'Sound on' : 'Sound off';
     els.speedBtn.textContent = 'Speed: ' + SPEEDS[settings.speed].name;
+    els.gmBtn.textContent = 'Mode: ' + GAME_MODES[settings.gm].name;
+    els.gmBtn.title = GAME_MODES[settings.gm].about;
+    els.gmBtn.hidden = isPlaying;
+    els.disc.classList.toggle('blackout', settings.gm === 'blackout' && state === 'input');
     els.playersBtn.hidden = isPlaying;
     els.strictBtn.hidden = isPlaying;
     els.speedBtn.hidden = isPlaying;
@@ -925,7 +995,7 @@ tr.fresh td { background: var(--surface-2); }
     var order = g.players.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) { return b.p.score - a.p.score || a.p.lost.length - b.p.lost.length; });
     var m = g.players.length > 1;
     $('resultTitle').textContent = m ? (g.winner != null ? g.players[g.winner].label + ' wins!' : 'It’s a draw') : 'Game over';
-    $('resultSub').textContent = modeName(g.strict, g.speed) + ' · reached round ' + g.rounds;
+    $('resultSub').textContent = modeName(g.strict, g.speed, gmOf(g)) + ' · reached round ' + g.rounds;
     var names = settings.names;
     order.forEach(function (o, r) {
       var p = o.p, i = o.i;
@@ -939,9 +1009,9 @@ tr.fresh td { background: var(--surface-2); }
       inp.setAttribute('aria-label', 'Name for ' + p.label);
       inp.disabled = g.saved || p.score === 0;
       who.appendChild(inp);
-      var rec = bestFor(g.strict, g.speed);
-      var place = placeOnBoard(g.strict, p.score) + r; // players ranked above in this game also go on the board
-      var metaText = p.score === 0 ? 'No score to save' : (place <= BOARD_SIZE ? 'Would place #' + place + ' on the ' + (g.strict ? 'Strict' : 'Relaxed') + ' leaderboard' : 'Outside the top ' + BOARD_SIZE);
+      var rec = bestFor(g.strict, g.speed, gmOf(g));
+      var place = placeOnBoard(g.strict, gmOf(g), p.score) + r; // players ranked above in this game also go on the board
+      var metaText = p.score === 0 ? 'No score to save' : (place <= BOARD_SIZE ? 'Would place #' + place + ' on the ' + GAME_MODES[gmOf(g)].name + ' ' + (g.strict ? 'Strict' : 'Relaxed') + ' leaderboard' : 'Outside the top ' + BOARD_SIZE);
       var meta = el('div', 'meta', metaText);
       if (rec && p.score >= rec.score && p.score > 0 && (rec.date === g.date || rec.score === p.score)) {
         var bd = el('span', 'badge', 'Best'); meta.appendChild(bd);
@@ -968,8 +1038,8 @@ tr.fresh td { background: var(--surface-2); }
     $('resultNote').textContent = g.saved ? 'Saved. Open the leaderboard to see where you placed.' : any ? (m ? 'Each player types a name to save their score.' : 'Type your name to save your score.') : 'Repeat at least one colour to get on the leaderboard.';
     showSheet('resultSheet');
   }
-  function placeOnBoard(strict, score) {
-    var b = boardFor(strict), n = 1;
+  function placeOnBoard(strict, gm, score) {
+    var b = boardFor(strict, gm), n = 1;
     b.forEach(function (e) { if (e.score >= score) n++; });
     return n;
   }
@@ -984,7 +1054,7 @@ tr.fresh td { background: var(--surface-2); }
       p.name = name;
       settings.names[i] = name;
       if (p.score > 0) {
-        var entry = { name: name, score: p.score, strict: g.strict, speed: g.speed, date: g.date, players: g.players.length };
+        var entry = { name: name, score: p.score, strict: g.strict, speed: g.speed, gm: gmOf(g), date: g.date, players: g.players.length };
         stats.board.push(entry);
         freshEntries.push(entry);
       }
@@ -997,14 +1067,17 @@ tr.fresh td { background: var(--surface-2); }
     openStats(g.strict);
   });
   $('againBtn').addEventListener('click', start);
-  $('resultStatsBtn').addEventListener('click', function () { openStats(lastGame ? lastGame.strict : settings.strict); });
+  $('resultStatsBtn').addEventListener('click', function () { openStats(lastGame ? lastGame.strict : settings.strict, lastGame ? gmOf(lastGame) : settings.gm); });
   $('resultSheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('saveBtn').click(); } });
 
   // Leaderboard & stats sheet
-  var statsTab = false;
-  function openStats(strict) { statsTab = !!strict; renderStats(); showSheet('statsSheet'); }
+  var statsTab = false, statsGm = 'standard';
+  function openStats(strict, gm) { statsTab = !!strict; statsGm = gm || settings.gm; renderStats(); showSheet('statsSheet'); }
   document.querySelectorAll('#boardTabs button').forEach(function (b) {
     b.addEventListener('click', function () { statsTab = b.dataset.mode === 'strict'; renderStats(); });
+  });
+  document.querySelectorAll('#gmTabs button').forEach(function (b) {
+    b.addEventListener('click', function () { statsGm = b.dataset.gm; renderStats(); });
   });
   function headRow(t, cols) {
     var tr = el('tr');
@@ -1017,11 +1090,13 @@ tr.fresh td { background: var(--surface-2); }
 
   function renderStats() {
     document.querySelectorAll('#boardTabs button').forEach(function (b) { b.setAttribute('aria-selected', String((b.dataset.mode === 'strict') === statsTab)); });
+    document.querySelectorAll('#gmTabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.gm === statsGm)); });
+    $('recTitle').textContent = 'Best score for each setting (' + GAME_MODES[statsGm].name + ')';
 
     // Leaderboard
     var t = $('lbTable'); t.textContent = '';
     var tb = headRow(t, [{ t: '#' }, { t: 'Name' }, { t: 'Score', n: 1 }, { t: 'Speed' }, { t: 'Game' }, { t: 'Date' }]);
-    var rows = boardFor(statsTab).slice(0, BOARD_SIZE);
+    var rows = boardFor(statsTab, statsGm).slice(0, BOARD_SIZE);
     if (!rows.length) emptyRow(tb, 6, 'No scores yet. Finish a game and save your name to get on the board.');
     rows.forEach(function (e, i) {
       var tr = el('tr', (i === 0 ? 'top ' : '') + (freshEntries.indexOf(e) !== -1 ? 'fresh' : ''));
@@ -1035,7 +1110,7 @@ tr.fresh td { background: var(--surface-2); }
     var rtb = headRow(rt, [{ t: 'Mode' }, { t: 'Speed' }, { t: 'Best', n: 1 }, { t: 'Held by' }, { t: 'Date' }]);
     [false, true].forEach(function (s) {
       SPEEDS.forEach(function (sp, si) {
-        var r = bestFor(s, si);
+        var r = bestFor(s, si, statsGm);
         var tr = el('tr');
         cell(tr, s ? 'Strict' : 'Relaxed'); cell(tr, sp.name); cell(tr, r ? String(r.score) : '–', true);
         cell(tr, r ? r.name : '–'); cell(tr, r ? fmtDate(r.date) : '');
@@ -1093,7 +1168,7 @@ tr.fresh td { background: var(--surface-2); }
     recent.forEach(function (g) {
       var tr = el('tr');
       cell(tr, fmtDate(g.date));
-      cell(tr, (g.strict ? 'Strict' : 'Relaxed') + ', ' + (SPEEDS[g.speed] ? SPEEDS[g.speed].name.toLowerCase() : ''));
+      cell(tr, GAME_MODES[gmOf(g)].name + ', ' + (g.strict ? 'strict' : 'relaxed') + ', ' + (SPEEDS[g.speed] ? SPEEDS[g.speed].name.toLowerCase() : ''));
       cell(tr, g.players.map(function (p) { return (p.name || p.label) + ' ' + p.score; }).join(' · '));
       cell(tr, g.players.length === 1 ? 'Solo' : g.winner != null ? (g.players[g.winner].name || g.players[g.winner].label) + ' won' : 'Draw');
       ctb.appendChild(tr);
@@ -1129,7 +1204,14 @@ tr.fresh td { background: var(--surface-2); }
   els.soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
   els.speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
   els.endBtn.addEventListener('click', endGameEarly);
-  $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict); });
+  $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict, settings.gm); });
+  els.gmBtn.addEventListener('click', function () {
+    settings.gm = GM_ORDER[(GM_ORDER.indexOf(settings.gm) + 1) % GM_ORDER.length];
+    store.set('gm', settings.gm);
+    resetTiles();
+    setStatus(GAME_MODES[settings.gm].name + ': ' + GAME_MODES[settings.gm].about, 'hint');
+    render();
+  });
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state === 'paused') { resume(); return; }
@@ -1144,7 +1226,8 @@ tr.fresh td { background: var(--surface-2); }
       return;
     }
     for (var i = 0; i < PADS.length; i++) {
-      if (PADS[i].keys.indexOf(e.key) !== -1) { e.preventDefault(); press(i); return; }
+      // Keys pick a position on the disc (Up = top tile), whichever colour is there now.
+      if (PADS[i].keys.indexOf(e.key) !== -1) { e.preventDefault(); press(colourAtPosition(i)); return; }
     }
   });
 
