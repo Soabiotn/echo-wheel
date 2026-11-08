@@ -351,7 +351,7 @@ tr.fresh td { background: var(--surface-2); }
       <p class="note warn-text" id="lockErr" role="alert"></p>
       <div class="row-actions"><button class="btn primary" id="lockGo" type="submit">Unlock</button><button class="btn" type="button" data-close>Cancel</button></div>
     </form>
-    <button class="linkish" id="lockForgot" type="button">Forgot the password?</button>
+    <p class="note" id="lockForgot">Forgot the password? It can&rsquo;t be recovered. Clearing this app&rsquo;s data in your browser settings removes the password along with all scores.</p>
   </div>
 </div>
 
@@ -978,31 +978,28 @@ tr.fresh td { background: var(--surface-2); }
     try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 16; i++) a[i] = Math.random() * 256 | 0; }
     return toHex(a.buffer);
   }
-  function requireUnlock(then) {
+  // Anyone can view the leaderboard and stats; the password guards resetting them and changing the password.
+  function requireUnlock(then, why) {
     if (!hasLock() || unlocked) then();
-    else openLock('unlock', then);
+    else openLock('unlock', then, why);
   }
   var LOCK_TEXT = {
-    unlock: { title: 'Leaderboard locked', sub: 'Enter the password to see the leaderboard and stats.', label: 'Password', go: 'Unlock', pw2: false, forgot: true },
-    set:    { title: 'Set a password', sub: 'You’ll need it to open the leaderboard and stats on this device. Players can still save their scores at the end of a game without it.', label: 'New password', go: 'Save password', pw2: true, forgot: false },
-    change: { title: 'Change password', sub: 'Choose a new password for the leaderboard and stats.', label: 'New password', go: 'Save password', pw2: true, forgot: false },
-    forgot: { title: 'Forgot the password?', sub: 'Without the password, the only way in is to erase the leaderboard, all stats and the password on this device. This can’t be undone. Type ERASE to confirm.', label: 'Type ERASE', go: 'Erase and unlock', pw2: false, forgot: false }
+    unlock: { title: 'Password needed', sub: 'Enter the password to continue.', label: 'Password', go: 'Continue', pw2: false, forgot: true },
+    set:    { title: 'Set a password', sub: 'Anyone can still view the leaderboard and stats. You’ll need this password to reset them, or to change or remove the password.', label: 'New password', go: 'Save password', pw2: true, forgot: false },
+    change: { title: 'Change password', sub: 'Choose a new password for resetting the leaderboard and stats.', label: 'New password', go: 'Save password', pw2: true, forgot: false }
   };
-  function openLock(mode, then) {
+  function openLock(mode, then, why) {
     lockMode = mode;
     if (then !== undefined) lockThen = then;
     var t = LOCK_TEXT[mode];
     $('lockTitle').textContent = t.title;
-    $('lockSub').textContent = t.sub;
+    $('lockSub').textContent = why || t.sub;
     $('lockPwLabel').textContent = t.label;
     $('lockGo').textContent = t.go;
-    $('lockGo').classList.toggle('danger', mode === 'forgot');
     $('lockPw2Row').hidden = !t.pw2;
     $('lockForgot').hidden = !t.forgot;
     var pw = $('lockPw');
-    pw.type = mode === 'forgot' ? 'text' : 'password';
     pw.autocomplete = mode === 'unlock' ? 'current-password' : 'new-password';
-    pw.placeholder = mode === 'forgot' ? 'ERASE' : '';
     pw.value = ''; $('lockPw2').value = ''; $('lockErr').textContent = '';
     showSheet('lockSheet');
   }
@@ -1010,7 +1007,6 @@ tr.fresh td { background: var(--surface-2); }
     var t = lockThen; lockThen = null;
     (t || function () { openStats(statsTab, statsGm); })();
   }
-  $('lockForgot').addEventListener('click', function () { openLock('forgot'); });
   $('lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var pw = $('lockPw').value, pw2 = $('lockPw2').value, err = $('lockErr');
@@ -1032,16 +1028,8 @@ tr.fresh td { background: var(--surface-2); }
         lock = { salt: salt, hash: h }; store.set('lock', lock);
         unlocked = true;
         openStats(statsTab, statsGm);
-        $('lockNote').textContent = lockMode === 'change' ? 'Password changed.' : 'Password set. The leaderboard locks again when you close it.';
+        $('lockNote').textContent = lockMode === 'change' ? 'Password changed.' : 'Password set. Resetting the leaderboard now needs it.';
       });
-    } else if (lockMode === 'forgot') {
-      if (pw.trim().toUpperCase() !== 'ERASE') { err.textContent = 'Type ERASE to confirm.'; return; }
-      stats = { games: [], board: [] }; freshEntries = []; lastGame = null; saveStats();
-      lock = null; store.set('lock', null);
-      unlocked = true; lockThen = null;
-      render();
-      openStats(statsTab, statsGm);
-      $('lockNote').textContent = 'Everything was erased and the password removed.';
     }
   });
   document.querySelectorAll('.sheet').forEach(function (s) {
@@ -1175,15 +1163,11 @@ tr.fresh td { background: var(--surface-2); }
     saveStats();
     players.forEach(function (p, i) { if (g.players[i].name) p.label = g.players[i].name; });
     render();
-    if (hasLock() && !unlocked) {
-      $('saveBtn').disabled = true; $('saveBtn').textContent = 'Saved';
-      document.querySelectorAll('#resultList input').forEach(function (i) { i.disabled = true; });
-      $('resultNote').textContent = 'Saved to the leaderboard. It’s password protected: tap Leaderboard and enter the password to see it.';
-    } else openStats(g.strict, gmOf(g));
+    openStats(g.strict, gmOf(g));
   });
   $('againBtn').addEventListener('click', start);
   $('resultStatsBtn').addEventListener('click', function () {
-    requireUnlock(function () { openStats(lastGame ? lastGame.strict : settings.strict, lastGame ? gmOf(lastGame) : settings.gm); });
+    openStats(lastGame ? lastGame.strict : settings.strict, lastGame ? gmOf(lastGame) : settings.gm);
   });
   $('resultSheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('saveBtn').click(); } });
 
@@ -1209,8 +1193,8 @@ tr.fresh td { background: var(--surface-2); }
     document.querySelectorAll('#boardTabs button').forEach(function (b) { b.setAttribute('aria-selected', String((b.dataset.mode === 'strict') === statsTab)); });
     document.querySelectorAll('#gmTabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.gm === statsGm)); });
     $('lockNote').textContent = hasLock()
-      ? 'Scores are saved on this device only. Password protected: the leaderboard locks again when you close it.'
-      : 'Scores are saved on this device only. Anyone can open the leaderboard until you set a password.';
+      ? 'Scores are saved on this device only. Password protected: resetting the leaderboard needs the password.'
+      : 'Scores are saved on this device only. Anyone can reset the leaderboard until you set a password.';
     $('pwBtn').textContent = hasLock() ? 'Change password' : 'Set a password';
     $('pwRemoveBtn').hidden = !hasLock();
     $('recTitle').textContent = 'Best score for each setting (' + GAME_MODES[statsGm].name + ')';
@@ -1297,9 +1281,18 @@ tr.fresh td { background: var(--surface-2); }
     });
   }
 
-  $('pwBtn').addEventListener('click', function () { openLock(hasLock() ? 'change' : 'set', null); });
+  $('pwBtn').addEventListener('click', function () {
+    if (!hasLock()) { openLock('set', null); return; }
+    requireUnlock(function () { openLock('change', null); }, 'Enter the current password to change it.');
+  });
+  function removePassword() {
+    lock = null; store.set('lock', null);
+    openStats(statsTab, statsGm);
+    $('lockNote').textContent = 'Password removed. Anyone can reset the leaderboard now.';
+  }
   var removeArmed = false;
   $('pwRemoveBtn').addEventListener('click', function () {
+    if (!unlocked) { requireUnlock(removePassword, 'Enter the password to remove it.'); return; }
     var b = $('pwRemoveBtn');
     if (!removeArmed) {
       removeArmed = true; b.textContent = 'Tap again to remove the password';
@@ -1307,23 +1300,27 @@ tr.fresh td { background: var(--surface-2); }
       return;
     }
     removeArmed = false; b.textContent = 'Remove password';
-    lock = null; store.set('lock', null);
-    renderStats();
-    $('lockNote').textContent = 'Password removed. Anyone can open the leaderboard now.';
+    removePassword();
   });
 
+  function resetAll() {
+    stats = { games: [], board: [] }; freshEntries = []; lastGame = null;
+    saveStats();
+    render();
+    openStats(statsTab, statsGm);
+    $('lockNote').textContent = 'The leaderboard and stats were reset.';
+  }
   var resetArmed = false;
   $('resetBtn').addEventListener('click', function () {
+    if (hasLock() && !unlocked) { requireUnlock(resetAll, 'Enter the password to reset the leaderboard and stats. This erases every score on this device and can’t be undone.'); return; }
     var b = $('resetBtn');
     if (!resetArmed) {
       resetArmed = true; b.textContent = 'Tap again to erase all scores'; b.classList.add('primary');
       setTimeout(function () { resetArmed = false; b.textContent = 'Reset leaderboard and stats'; b.classList.remove('primary'); }, 4000);
       return;
     }
-    resetArmed = false;
-    stats = { games: [], board: [] }; freshEntries = []; lastGame = null;
-    saveStats(); b.textContent = 'Reset leaderboard and stats'; b.classList.remove('primary');
-    renderStats(); render();
+    resetArmed = false; b.textContent = 'Reset leaderboard and stats'; b.classList.remove('primary');
+    resetAll();
   });
 
   // ---- Controls ----
@@ -1341,7 +1338,7 @@ tr.fresh td { background: var(--surface-2); }
   els.soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
   els.speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
   els.endBtn.addEventListener('click', endGameEarly);
-  $('bestBtn').addEventListener('click', function () { freshEntries = []; requireUnlock(function () { openStats(settings.strict, settings.gm); }); });
+  $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict, settings.gm); });
   els.gmBtn.addEventListener('click', function () {
     settings.gm = GM_ORDER[(GM_ORDER.indexOf(settings.gm) + 1) % GM_ORDER.length];
     store.set('gm', settings.gm);
