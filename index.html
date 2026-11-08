@@ -160,6 +160,10 @@ h1 .dots i { width: 7px; height: 7px; border-radius: 50%; display: block; }
 .names label { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); align-items: center; gap: 10px; font-weight: 600; color: var(--muted); font-size: 0.9rem; }
 .names input { font: inherit; font-weight: 600; font-size: 1.05rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; min-width: 0; width: 100%; }
 .names input:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 1px; }
+.warn-text { color: var(--heart); min-height: 1.2em; }
+.btn.danger { background: var(--heart); border-color: var(--heart); color: var(--surface); }
+.linkish { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; font-size: 0.88rem; align-self: flex-start; }
+.linkish:focus-visible { outline: 3px solid var(--blue-lit); outline-offset: 2px; }
 .pause-big { font-size: 3rem; text-align: center; margin: 0; }
 svg.disc { width: 100%; height: 100%; display: block; overflow: visible; }
 .disc.shake { animation: shake 0.42s ease; }
@@ -336,6 +340,21 @@ tr.fresh td { background: var(--surface-2); }
   </div>
 </div>
 
+<!-- Password sheet -->
+<div class="sheet" id="lockSheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+    <div class="panel-head"><h2 id="lockTitle">Leaderboard locked</h2><button class="x" type="button" data-close aria-label="Close">&times;</button></div>
+    <p class="sub" id="lockSub"></p>
+    <form id="lockForm" class="names" autocomplete="off">
+      <label for="lockPw"><span id="lockPwLabel">Password</span><input id="lockPw" type="password" autocomplete="current-password" maxlength="64"></label>
+      <label for="lockPw2" id="lockPw2Row"><span>Repeat it</span><input id="lockPw2" type="password" autocomplete="new-password" maxlength="64"></label>
+      <p class="note warn-text" id="lockErr" role="alert"></p>
+      <div class="row-actions"><button class="btn primary" id="lockGo" type="submit">Unlock</button><button class="btn" type="button" data-close>Cancel</button></div>
+    </form>
+    <button class="linkish" id="lockForgot" type="button">Forgot the password?</button>
+  </div>
+</div>
+
 <!-- Pause sheet -->
 <div class="sheet" id="pauseSheet" hidden>
   <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
@@ -382,8 +401,12 @@ tr.fresh td { background: var(--surface-2); }
     <section><h3>On this device</h3><div class="tiles" id="tiles"></div></section>
     <section><h3>Players</h3><div class="table-wrap"><table id="playerTable"></table></div></section>
     <section><h3>Recent games</h3><div class="table-wrap"><table id="recentTable"></table></div></section>
-    <p class="note">Scores are saved on this device only.</p>
-    <div class="row-actions"><button class="btn" id="resetBtn" type="button">Reset leaderboard and stats</button></div>
+    <p class="note" id="lockNote">Scores are saved on this device only.</p>
+    <div class="row-actions">
+      <button class="btn" id="pwBtn" type="button">Set a password</button>
+      <button class="btn" id="pwRemoveBtn" type="button" hidden>Remove password</button>
+      <button class="btn" id="resetBtn" type="button">Reset leaderboard and stats</button>
+    </div>
   </div>
 </div>
 
@@ -923,16 +946,104 @@ tr.fresh td { background: var(--surface-2); }
   // ---- Sheets ----
   var openSheet = null;
   function showSheet(id) {
-    closeSheets();
+    closeSheets(id === 'statsSheet' || id === 'lockSheet');
     openSheet = $(id);
     openSheet.hidden = false;
-    var f = openSheet.querySelector('input, .btn.primary, button');
+    var f = openSheet.querySelector('input:not([disabled]), .btn.primary, button');
     if (f) setTimeout(function () { try { f.focus(); } catch (e) {} }, 30);
   }
-  function closeSheets() {
-    ['playersSheet', 'resultSheet', 'statsSheet', 'pauseSheet'].forEach(function (id) { $(id).hidden = true; });
+  // Closing the leaderboard locks it again.
+  function closeSheets(keepUnlocked) {
+    ['playersSheet', 'resultSheet', 'statsSheet', 'pauseSheet', 'lockSheet'].forEach(function (id) { $(id).hidden = true; });
     openSheet = null;
+    if (!keepUnlocked) unlocked = false;
   }
+
+  // ---- Password lock for the leaderboard and stats (stored as a salted SHA-256 hash on this device) ----
+  var lock = store.get('lock', null);
+  var unlocked = false, lockMode = 'unlock', lockThen = null, fails = 0, lockUntil = 0;
+  function hasLock() { return !!(lock && lock.hash && lock.salt); }
+  function toHex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  function hashPw(pw, salt) {
+    var data = salt + ':' + pw;
+    try {
+      if (window.crypto && crypto.subtle && window.TextEncoder) return crypto.subtle.digest('SHA-256', new TextEncoder().encode(data)).then(toHex);
+    } catch (e) {}
+    var h = 2166136261;
+    for (var i = 0; i < data.length; i++) { h ^= data.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return Promise.resolve('fnv' + h.toString(16));
+  }
+  function newSalt() {
+    var a = new Uint8Array(16);
+    try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 16; i++) a[i] = Math.random() * 256 | 0; }
+    return toHex(a.buffer);
+  }
+  function requireUnlock(then) {
+    if (!hasLock() || unlocked) then();
+    else openLock('unlock', then);
+  }
+  var LOCK_TEXT = {
+    unlock: { title: 'Leaderboard locked', sub: 'Enter the password to see the leaderboard and stats.', label: 'Password', go: 'Unlock', pw2: false, forgot: true },
+    set:    { title: 'Set a password', sub: 'You’ll need it to open the leaderboard and stats on this device. Players can still save their scores at the end of a game without it.', label: 'New password', go: 'Save password', pw2: true, forgot: false },
+    change: { title: 'Change password', sub: 'Choose a new password for the leaderboard and stats.', label: 'New password', go: 'Save password', pw2: true, forgot: false },
+    forgot: { title: 'Forgot the password?', sub: 'Without the password, the only way in is to erase the leaderboard, all stats and the password on this device. This can’t be undone. Type ERASE to confirm.', label: 'Type ERASE', go: 'Erase and unlock', pw2: false, forgot: false }
+  };
+  function openLock(mode, then) {
+    lockMode = mode;
+    if (then !== undefined) lockThen = then;
+    var t = LOCK_TEXT[mode];
+    $('lockTitle').textContent = t.title;
+    $('lockSub').textContent = t.sub;
+    $('lockPwLabel').textContent = t.label;
+    $('lockGo').textContent = t.go;
+    $('lockGo').classList.toggle('danger', mode === 'forgot');
+    $('lockPw2Row').hidden = !t.pw2;
+    $('lockForgot').hidden = !t.forgot;
+    var pw = $('lockPw');
+    pw.type = mode === 'forgot' ? 'text' : 'password';
+    pw.autocomplete = mode === 'unlock' ? 'current-password' : 'new-password';
+    pw.placeholder = mode === 'forgot' ? 'ERASE' : '';
+    pw.value = ''; $('lockPw2').value = ''; $('lockErr').textContent = '';
+    showSheet('lockSheet');
+  }
+  function afterUnlock() {
+    var t = lockThen; lockThen = null;
+    (t || function () { openStats(statsTab, statsGm); })();
+  }
+  $('lockForgot').addEventListener('click', function () { openLock('forgot'); });
+  $('lockForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw = $('lockPw').value, pw2 = $('lockPw2').value, err = $('lockErr');
+    if (lockMode === 'unlock') {
+      if (Date.now() < lockUntil) { err.textContent = 'Too many wrong tries. Wait ' + Math.ceil((lockUntil - Date.now()) / 1000) + ' seconds.'; return; }
+      if (!pw) { err.textContent = 'Enter the password.'; return; }
+      hashPw(pw, lock.salt).then(function (h) {
+        if (h === lock.hash) { fails = 0; unlocked = true; afterUnlock(); return; }
+        fails++;
+        if (fails >= 5) { fails = 0; lockUntil = Date.now() + 30000; err.textContent = 'Wrong password. Try again in 30 seconds.'; }
+        else err.textContent = 'Wrong password. Try again.';
+        $('lockPw').select();
+      });
+    } else if (lockMode === 'set' || lockMode === 'change') {
+      if (pw.length < 4) { err.textContent = 'Use at least 4 characters.'; return; }
+      if (pw !== pw2) { err.textContent = 'The two passwords don’t match.'; return; }
+      var salt = newSalt();
+      hashPw(pw, salt).then(function (h) {
+        lock = { salt: salt, hash: h }; store.set('lock', lock);
+        unlocked = true;
+        openStats(statsTab, statsGm);
+        $('lockNote').textContent = lockMode === 'change' ? 'Password changed.' : 'Password set. The leaderboard locks again when you close it.';
+      });
+    } else if (lockMode === 'forgot') {
+      if (pw.trim().toUpperCase() !== 'ERASE') { err.textContent = 'Type ERASE to confirm.'; return; }
+      stats = { games: [], board: [] }; freshEntries = []; lastGame = null; saveStats();
+      lock = null; store.set('lock', null);
+      unlocked = true; lockThen = null;
+      render();
+      openStats(statsTab, statsGm);
+      $('lockNote').textContent = 'Everything was erased and the password removed.';
+    }
+  });
   document.querySelectorAll('.sheet').forEach(function (s) {
     s.addEventListener('click', function (e) {
       if (s.id === 'pauseSheet') return; // only Resume or End game leave the pause screen
@@ -1064,10 +1175,16 @@ tr.fresh td { background: var(--surface-2); }
     saveStats();
     players.forEach(function (p, i) { if (g.players[i].name) p.label = g.players[i].name; });
     render();
-    openStats(g.strict);
+    if (hasLock() && !unlocked) {
+      $('saveBtn').disabled = true; $('saveBtn').textContent = 'Saved';
+      document.querySelectorAll('#resultList input').forEach(function (i) { i.disabled = true; });
+      $('resultNote').textContent = 'Saved to the leaderboard. It’s password protected: tap Leaderboard and enter the password to see it.';
+    } else openStats(g.strict, gmOf(g));
   });
   $('againBtn').addEventListener('click', start);
-  $('resultStatsBtn').addEventListener('click', function () { openStats(lastGame ? lastGame.strict : settings.strict, lastGame ? gmOf(lastGame) : settings.gm); });
+  $('resultStatsBtn').addEventListener('click', function () {
+    requireUnlock(function () { openStats(lastGame ? lastGame.strict : settings.strict, lastGame ? gmOf(lastGame) : settings.gm); });
+  });
   $('resultSheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('saveBtn').click(); } });
 
   // Leaderboard & stats sheet
@@ -1091,6 +1208,11 @@ tr.fresh td { background: var(--surface-2); }
   function renderStats() {
     document.querySelectorAll('#boardTabs button').forEach(function (b) { b.setAttribute('aria-selected', String((b.dataset.mode === 'strict') === statsTab)); });
     document.querySelectorAll('#gmTabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.gm === statsGm)); });
+    $('lockNote').textContent = hasLock()
+      ? 'Scores are saved on this device only. Password protected: the leaderboard locks again when you close it.'
+      : 'Scores are saved on this device only. Anyone can open the leaderboard until you set a password.';
+    $('pwBtn').textContent = hasLock() ? 'Change password' : 'Set a password';
+    $('pwRemoveBtn').hidden = !hasLock();
     $('recTitle').textContent = 'Best score for each setting (' + GAME_MODES[statsGm].name + ')';
 
     // Leaderboard
@@ -1175,6 +1297,21 @@ tr.fresh td { background: var(--surface-2); }
     });
   }
 
+  $('pwBtn').addEventListener('click', function () { openLock(hasLock() ? 'change' : 'set', null); });
+  var removeArmed = false;
+  $('pwRemoveBtn').addEventListener('click', function () {
+    var b = $('pwRemoveBtn');
+    if (!removeArmed) {
+      removeArmed = true; b.textContent = 'Tap again to remove the password';
+      setTimeout(function () { removeArmed = false; b.textContent = 'Remove password'; }, 4000);
+      return;
+    }
+    removeArmed = false; b.textContent = 'Remove password';
+    lock = null; store.set('lock', null);
+    renderStats();
+    $('lockNote').textContent = 'Password removed. Anyone can open the leaderboard now.';
+  });
+
   var resetArmed = false;
   $('resetBtn').addEventListener('click', function () {
     var b = $('resetBtn');
@@ -1204,7 +1341,7 @@ tr.fresh td { background: var(--surface-2); }
   els.soundBtn.addEventListener('click', function () { settings.sound = !settings.sound; store.set('sound', settings.sound); ensureAudio(); render(); });
   els.speedBtn.addEventListener('click', function () { settings.speed = (settings.speed + 1) % SPEEDS.length; store.set('speed', settings.speed); render(); });
   els.endBtn.addEventListener('click', endGameEarly);
-  $('bestBtn').addEventListener('click', function () { freshEntries = []; openStats(settings.strict, settings.gm); });
+  $('bestBtn').addEventListener('click', function () { freshEntries = []; requireUnlock(function () { openStats(settings.strict, settings.gm); }); });
   els.gmBtn.addEventListener('click', function () {
     settings.gm = GM_ORDER[(GM_ORDER.indexOf(settings.gm) + 1) % GM_ORDER.length];
     store.set('gm', settings.gm);
